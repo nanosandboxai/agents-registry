@@ -20,7 +20,26 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v7-dedup)"
+echo "nanosb-init: starting (v8-9p)"
+
+# ---------------------------------------------------------------
+# 0b. Detect 9P rootfs mode (Windows HCS)
+# ---------------------------------------------------------------
+# When the rootfs is a Plan9 share from a Windows host, NTFS doesn't
+# track Unix permissions. All files appear as 0777 through 9P.
+# sshd requires strict permissions on host keys and authorized_keys.
+# We detect this via a kernel cmdline flag set by the Windows runtime.
+NANOSB_9P_MODE=false
+if grep -q 'nanosb.9p_rootfs=1' /proc/cmdline 2>/dev/null; then
+    NANOSB_9P_MODE=true
+    echo "nanosb-init: 9P rootfs mode detected (Windows HCS)"
+fi
+
+# Helper: parse a key=value parameter from /proc/cmdline
+get_cmdline_param() {
+    local key="$1"
+    cat /proc/cmdline 2>/dev/null | tr ' ' '\n' | grep "^${key}=" | cut -d= -f2-
+}
 
 # ---------------------------------------------------------------
 # 1. Configure networking (gvproxy virtio-net)
@@ -40,9 +59,20 @@ elif command -v ifconfig >/dev/null 2>&1; then
     route add default gw 192.168.127.1 2>/dev/null || true
 fi
 
-# DNS — gvproxy's built-in DNS is at the gateway IP
+# DNS configuration
 mkdir -p /etc 2>/dev/null || true
-echo "nameserver 192.168.127.1" > /etc/resolv.conf 2>/dev/null || true
+if [ "$NANOSB_9P_MODE" = "true" ]; then
+    # HCS provides DNS via Windows host networking.
+    # The plan9_mount init already wrote /etc/resolv.conf from the host.
+    # If it's missing or empty, fall back to common Windows DNS.
+    if [ ! -s /etc/resolv.conf ]; then
+        echo "nameserver 8.8.8.8" > /etc/resolv.conf 2>/dev/null || true
+    fi
+    echo "nanosb-init: using HCS-provided DNS"
+else
+    # gvproxy's built-in DNS is at the gateway IP
+    echo "nameserver 192.168.127.1" > /etc/resolv.conf 2>/dev/null || true
+fi
 
 echo "nanosb-init: networking configured"
 
@@ -103,18 +133,61 @@ fi
 # 3. Start sshd (background) — enables SSH health check + access
 # ---------------------------------------------------------------
 if [ -x /usr/sbin/sshd ]; then
-    # Generate host keys if missing (first boot)
-    ssh-keygen -A 2>/dev/null || true
 
-    # Fix ownership: virtiofs passes through host UIDs, so rootfs files
-    # and directories appear owned by the macOS user (e.g. UID 501)
-    # instead of root. sshd StrictModes requires /run/sshd, /root,
-    # /root/.ssh, and authorized_keys to all be owned by root (UID 0).
-    mkdir -p /run/sshd 2>/dev/null || true
-    chown 0:0 /run /run/sshd 2>/dev/null || true
-    chmod 0755 /run/sshd 2>/dev/null || true
-    chown 0:0 /root 2>/dev/null || true
-    chown -R 0:0 /root/.ssh 2>/dev/null || true
+    if [ "$NANOSB_9P_MODE" = "true" ]; then
+        # --- 9P mode (Windows HCS) ---
+        # NTFS doesn't track Unix permissions. All files via 9P appear as
+        # 0777/root:root. sshd requires host keys be 0600 and authorized_keys
+        # be 0600 with proper ownership. Use tmpfs overlays to get real perms.
+
+        # tmpfs over /etc/ssh — gives us writable dir with proper permissions
+        mkdir -p /etc/ssh 2>/dev/null || true
+        mount -t tmpfs tmpfs /etc/ssh 2>/dev/null || true
+
+        # Write sshd_config with StrictModes disabled (belt + suspenders)
+        cat > /etc/ssh/sshd_config <<'SSHD_CONF'
+Port 22
+PermitRootLogin yes
+PubkeyAuthentication yes
+PasswordAuthentication no
+StrictModes no
+Subsystem sftp /usr/lib/openssh/sftp-server
+SSHD_CONF
+
+        # Generate host keys on tmpfs (proper 0600 permissions)
+        ssh-keygen -A 2>/dev/null || true
+
+        # tmpfs over /root/.ssh — writable with proper permissions
+        mkdir -p /root/.ssh 2>/dev/null || true
+        mount -t tmpfs tmpfs /root/.ssh 2>/dev/null || true
+
+        # Inject SSH public key from kernel cmdline (set by Windows runtime)
+        NANOSB_SSH_KEY=$(get_cmdline_param nanosb.ssh_key)
+        if [ -n "$NANOSB_SSH_KEY" ]; then
+            # Key was passed with commas replacing spaces (cmdline limitation)
+            SSH_KEY=$(echo "$NANOSB_SSH_KEY" | tr ',' ' ')
+            echo "$SSH_KEY" > /root/.ssh/authorized_keys
+            chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true
+            echo "nanosb-init: SSH key injected from kernel cmdline"
+        fi
+
+        mkdir -p /run/sshd 2>/dev/null || true
+        echo "nanosb-init: 9P SSH setup complete (tmpfs overlays)"
+    else
+        # --- Normal mode (virtiofs / macOS / Linux) ---
+        # Generate host keys if missing (first boot)
+        ssh-keygen -A 2>/dev/null || true
+
+        # Fix ownership: virtiofs passes through host UIDs, so rootfs files
+        # and directories appear owned by the macOS user (e.g. UID 501)
+        # instead of root. sshd StrictModes requires /run/sshd, /root,
+        # /root/.ssh, and authorized_keys to all be owned by root (UID 0).
+        mkdir -p /run/sshd 2>/dev/null || true
+        chown 0:0 /run /run/sshd 2>/dev/null || true
+        chmod 0755 /run/sshd 2>/dev/null || true
+        chown 0:0 /root 2>/dev/null || true
+        chown -R 0:0 /root/.ssh 2>/dev/null || true
+    fi
 
     # Copy SSH authorized_keys from root to developer user so that
     # the TUI can connect as 'developer' (non-root) for agent CLIs.
