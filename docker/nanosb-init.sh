@@ -205,6 +205,12 @@ SSHD_CONF
         chmod 600 /home/developer/.ssh/authorized_keys 2>/dev/null || true
     fi
 
+    # Unlock the developer account for SSH pubkey auth.
+    # Debian images create users with '!' in /etc/shadow (locked), and
+    # OpenSSH rejects pubkey auth for locked accounts even with StrictModes off.
+    # Change '!' to '*' (disabled password, but not locked).
+    usermod -p '*' developer 2>/dev/null || true
+
     # Fix ownership of developer's entire home directory.
     # virtiofs passes through host UIDs (e.g. macOS UID 501), so all files
     # from the rootfs appear with wrong ownership inside the VM.
