@@ -194,6 +194,11 @@ SSHD_CONF
     # Agents like Claude Code refuse --dangerously-skip-permissions as root.
     if [ -f /root/.ssh/authorized_keys ]; then
         mkdir -p /home/developer/.ssh 2>/dev/null || true
+        # In 9P mode, /home/developer/.ssh is on NTFS (0777). Use tmpfs overlay
+        # so sshd sees proper ownership and permissions.
+        if [ "$NANOSB_9P_MODE" = "true" ]; then
+            mount -t tmpfs tmpfs /home/developer/.ssh 2>/dev/null || true
+        fi
         cp /root/.ssh/authorized_keys /home/developer/.ssh/authorized_keys 2>/dev/null || true
         chown -R developer:developer /home/developer/.ssh 2>/dev/null || true
         chmod 700 /home/developer/.ssh 2>/dev/null || true
