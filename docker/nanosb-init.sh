@@ -1,8 +1,11 @@
 #!/bin/sh
 # nanosb-init.sh — PID 1 init script for nanosandbox VMs
 #
-# Configures networking (if not already done by libkrun's VMM),
-# starts sshd for direct access, then execs agent-gateway.
+# Starts sshd for direct access, then execs agent-gateway.
+#
+# Networking is NOT configured here — it is handled by the VM runtime:
+#   - Linux/macOS: libkrun VMM configures gvproxy virtio-net
+#   - Windows HCS: init.krun configures vsock_proxy + iptables REDIRECT
 #
 # NOTE: Do NOT use "set -e" here. This is an init script (PID 1) —
 # if it exits for ANY reason, the VM shuts down. Every command must
@@ -20,7 +23,7 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v8-9p)"
+echo "nanosb-init: starting (v9-no-net)"
 
 # ---------------------------------------------------------------
 # 0b. Detect 9P rootfs mode (Windows HCS)
@@ -42,42 +45,7 @@ get_cmdline_param() {
 }
 
 # ---------------------------------------------------------------
-# 1. Configure networking (gvproxy virtio-net)
-# ---------------------------------------------------------------
-# libkrun's VMM may have already configured the network interface
-# via gvproxy. Only add the address if eth0 doesn't already have one.
-if command -v ip >/dev/null 2>&1; then
-    ip link set eth0 up 2>/dev/null || true
-    if ! ip addr show eth0 2>/dev/null | grep -q 'inet '; then
-        ip addr add 192.168.127.2/24 dev eth0 2>/dev/null || true
-    fi
-    if ! ip route show 2>/dev/null | grep -q 'default'; then
-        ip route add default via 192.168.127.1 dev eth0 2>/dev/null || true
-    fi
-elif command -v ifconfig >/dev/null 2>&1; then
-    ifconfig eth0 192.168.127.2 netmask 255.255.255.0 up 2>/dev/null || true
-    route add default gw 192.168.127.1 2>/dev/null || true
-fi
-
-# DNS configuration
-mkdir -p /etc 2>/dev/null || true
-if [ "$NANOSB_9P_MODE" = "true" ]; then
-    # HCS provides DNS via Windows host networking.
-    # The plan9_mount init already wrote /etc/resolv.conf from the host.
-    # If it's missing or empty, fall back to common Windows DNS.
-    if [ ! -s /etc/resolv.conf ]; then
-        echo "nameserver 8.8.8.8" > /etc/resolv.conf 2>/dev/null || true
-    fi
-    echo "nanosb-init: using HCS-provided DNS"
-else
-    # gvproxy's built-in DNS is at the gateway IP
-    echo "nameserver 192.168.127.1" > /etc/resolv.conf 2>/dev/null || true
-fi
-
-echo "nanosb-init: networking configured"
-
-# ---------------------------------------------------------------
-# 2. Mount virtiofs shared directories
+# 1. Mount virtiofs shared directories
 # ---------------------------------------------------------------
 # The host writes /etc/nanosb-mounts with lines: "<tag> <mountpoint>"
 # Each line corresponds to a virtiofs device registered via krun_add_virtiofs.
@@ -97,7 +65,7 @@ if [ -f /etc/nanosb-mounts ]; then
 fi
 
 # ---------------------------------------------------------------
-# 2b. Link agent state dirs into /workspace/.nanosb-state/
+# 1b. Link agent state dirs into /workspace/.nanosb-state/
 # ---------------------------------------------------------------
 # Agent session state (conversation history, config) is stored inside
 # the workspace clone at .nanosb-state/ so it persists across VM
@@ -130,7 +98,7 @@ if [ -d /workspace ]; then
 fi
 
 # ---------------------------------------------------------------
-# 3. Start sshd (background) — enables SSH health check + access
+# 2. Start sshd (background) — enables SSH health check + access
 # ---------------------------------------------------------------
 if [ -x /usr/sbin/sshd ]; then
 
@@ -224,7 +192,7 @@ SSHD_CONF
 fi
 
 # ---------------------------------------------------------------
-# 4. Start agent-gateway (foreground) — handles agent API + MCP
+# 3. Start agent-gateway (foreground) — handles agent API + MCP
 # ---------------------------------------------------------------
 if [ -x /usr/local/bin/agent-gateway ]; then
     echo "nanosb-init: starting agent-gateway"

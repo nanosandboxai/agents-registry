@@ -4,13 +4,10 @@ on:
   push:
     tags:
       - 'v*'
-  # pull_request:
-  #   branches:
-  #     - main
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag (optional, defaults to SHA)'
+        description: 'Image tag (e.g., rc1, rc2). Required for RC builds.'
         required: false
         type: string
       agent:
