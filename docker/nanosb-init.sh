@@ -23,10 +23,22 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v9-no-net)"
+echo "nanosb-init: starting (v10)"
 
 # ---------------------------------------------------------------
-# 0b. Detect 9P rootfs mode (Windows HCS)
+# 0b. Outbound proxy routing (Windows HCS)
+# ---------------------------------------------------------------
+# When vsock_proxy is running (started by init.krun before switch_root),
+# all outbound TCP must be routed through it via iptables REDIRECT.
+# The iptables binary is only available in the full rootfs (not the boot
+# initrd), so this rule must be set here — after switch_root.
+if pidof vsock_proxy >/dev/null 2>&1; then
+    iptables -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 -j REDIRECT --to-port 1080 2>/dev/null || true
+    echo "nanosb-init: iptables REDIRECT to vsock_proxy :1080"
+fi
+
+# ---------------------------------------------------------------
+# 0c. Detect 9P rootfs mode (Windows HCS)
 # ---------------------------------------------------------------
 # When the rootfs is a Plan9 share from a Windows host, NTFS doesn't
 # track Unix permissions. All files appear as 0777 through 9P.
