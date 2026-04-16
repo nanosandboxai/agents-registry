@@ -42,7 +42,6 @@ if pidof vsock_proxy >/dev/null 2>&1; then
     # Use dnat instead of redirect since we boot with nomodule.
     if command -v nft >/dev/null 2>&1 || [ -x /usr/sbin/nft ]; then
         NFT=$(command -v nft 2>/dev/null || echo /usr/sbin/nft)
-        # Use heredoc to avoid shell interpretation issues with != and :
         if $NFT add table ip nanosb 2>/dev/null \
            && $NFT add chain ip nanosb output '{ type nat hook output priority -100 ; policy accept ; }' 2>/dev/null \
            && $NFT -f - 2>/dev/null <<'NFTRULE'
@@ -52,11 +51,7 @@ NFTRULE
             REDIRECT_OK=true
             echo "nanosb-init: nft DNAT to vsock_proxy 127.0.0.1:1080"
         else
-            NFT_ERR=$($NFT -f - 2>&1 <<'NFTRULE'
-add rule ip nanosb output ip daddr != 127.0.0.0/8 ip protocol tcp dnat to 127.0.0.1:1080
-NFTRULE
-            )
-            echo "nanosb-init: nft dnat failed: $NFT_ERR"
+            echo "nanosb-init: nft dnat failed, trying iptables fallback"
         fi
     fi
 
