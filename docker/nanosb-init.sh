@@ -23,7 +23,7 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v13)"
+echo "nanosb-init: starting (v14)"
 
 # ---------------------------------------------------------------
 # 0b. Outbound proxy routing (Windows HCS)
@@ -40,14 +40,22 @@ if pidof vsock_proxy >/dev/null 2>&1; then
     # Try nft first (direct nftables API — works with built-in kernel support)
     if command -v nft >/dev/null 2>&1 || [ -x /usr/sbin/nft ]; then
         NFT=$(command -v nft 2>/dev/null || echo /usr/sbin/nft)
-        NFT_ERR=$($NFT add table ip nanosb 2>&1) && NFT_ERR="$NFT_ERR
-$($NFT add chain ip nanosb output '{ type nat hook output priority -100 ; policy accept ; }' 2>&1)" && NFT_ERR="$NFT_ERR
-$($NFT add rule ip nanosb output tcp daddr != 127.0.0.0/8 redirect to :1080 2>&1)"
-        if [ $? -eq 0 ]; then
+        echo "nanosb-init: trying nft at $NFT"
+        $NFT add table ip nanosb 2>&1
+        E1=$?
+        echo "nanosb-init: nft add table: exit=$E1"
+        $NFT add chain ip nanosb output '{ type nat hook output priority -100 ; policy accept ; }' 2>&1
+        E2=$?
+        echo "nanosb-init: nft add chain: exit=$E2"
+        $NFT add rule ip nanosb output tcp daddr != 127.0.0.0/8 redirect to :1080 2>&1
+        E3=$?
+        echo "nanosb-init: nft add rule: exit=$E3"
+        if [ $E1 -eq 0 ] && [ $E2 -eq 0 ] && [ $E3 -eq 0 ]; then
             REDIRECT_OK=true
             echo "nanosb-init: nft NAT REDIRECT to vsock_proxy :1080"
         else
-            echo "nanosb-init: nft failed: $NFT_ERR"
+            echo "nanosb-init: nft failed (table=$E1 chain=$E2 rule=$E3)"
+            $NFT list ruleset 2>&1
         fi
     fi
 
