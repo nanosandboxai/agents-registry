@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     iproute2 \
     iptables \
+    nftables \
     bash \
     openssh-server \
     procps \

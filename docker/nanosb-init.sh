@@ -23,32 +23,48 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v11)"
+echo "nanosb-init: starting (v12)"
 
 # ---------------------------------------------------------------
 # 0b. Outbound proxy routing (Windows HCS)
 # ---------------------------------------------------------------
 # When vsock_proxy is running (started by init.krun before switch_root),
-# all outbound TCP must be routed through it via iptables REDIRECT.
-# The iptables binary is only available in the full rootfs (not the boot
-# initrd), so this rule must be set here — after switch_root.
+# all outbound TCP must be routed through it via NAT REDIRECT to port 1080.
+#
+# The WSL kernel has nftables built-in (=y) but iptables as modules (=m).
+# Since we boot with nomodule, only raw nft commands work reliably.
+# Fall back to iptables-nft / iptables for non-WSL kernels.
 if pidof vsock_proxy >/dev/null 2>&1; then
-    # Resolve iptables binary: the 'iptables' command is an alternatives symlink
-    # that doesn't survive 9P/NTFS (Windows HCS). Fall back to the real binaries.
-    # Prefer iptables-nft: the WSL kernel has nftables built-in (=y) but
-    # legacy iptables as modules (=m), and we boot with nomodule.
-    IPTABLES=""
-    for ipt in iptables-nft /usr/sbin/iptables-nft iptables /usr/sbin/iptables; do
-        if command -v "$ipt" >/dev/null 2>&1; then
-            IPTABLES="$ipt"
-            break
+    REDIRECT_OK=false
+
+    # Try nft first (direct nftables API — works with built-in kernel support)
+    if command -v nft >/dev/null 2>&1 || [ -x /usr/sbin/nft ]; then
+        NFT=$(command -v nft 2>/dev/null || echo /usr/sbin/nft)
+        if $NFT add table ip nanosb 2>/dev/null \
+           && $NFT add chain ip nanosb output '{ type nat hook output priority -100 ; policy accept ; }' 2>/dev/null \
+           && $NFT add rule ip nanosb output tcp daddr != 127.0.0.0/8 redirect to :1080 2>/dev/null; then
+            REDIRECT_OK=true
+            echo "nanosb-init: nft NAT REDIRECT to vsock_proxy :1080"
+        else
+            echo "nanosb-init: nft failed, trying iptables fallback"
         fi
-    done
-    if [ -n "$IPTABLES" ]; then
-        $IPTABLES -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 -j REDIRECT --to-port 1080 2>/dev/null || true
-        echo "nanosb-init: iptables REDIRECT to vsock_proxy :1080 (via $IPTABLES)"
-    else
-        echo "nanosb-init: WARNING: iptables not found, outbound TCP will not work"
+    fi
+
+    # Fallback: iptables-nft or iptables (for kernels with iptables modules loaded)
+    if [ "$REDIRECT_OK" = "false" ]; then
+        for ipt in iptables-nft /usr/sbin/iptables-nft iptables /usr/sbin/iptables; do
+            if command -v "$ipt" >/dev/null 2>&1; then
+                if $ipt -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 -j REDIRECT --to-port 1080 2>/dev/null; then
+                    REDIRECT_OK=true
+                    echo "nanosb-init: iptables REDIRECT to vsock_proxy :1080 (via $ipt)"
+                fi
+                break
+            fi
+        done
+    fi
+
+    if [ "$REDIRECT_OK" = "false" ]; then
+        echo "nanosb-init: WARNING: could not set NAT REDIRECT, outbound TCP will not work"
     fi
 fi
 
