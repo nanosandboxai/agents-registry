@@ -23,7 +23,7 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v12)"
+echo "nanosb-init: starting (v13)"
 
 # ---------------------------------------------------------------
 # 0b. Outbound proxy routing (Windows HCS)
@@ -40,13 +40,14 @@ if pidof vsock_proxy >/dev/null 2>&1; then
     # Try nft first (direct nftables API — works with built-in kernel support)
     if command -v nft >/dev/null 2>&1 || [ -x /usr/sbin/nft ]; then
         NFT=$(command -v nft 2>/dev/null || echo /usr/sbin/nft)
-        if $NFT add table ip nanosb 2>/dev/null \
-           && $NFT add chain ip nanosb output '{ type nat hook output priority -100 ; policy accept ; }' 2>/dev/null \
-           && $NFT add rule ip nanosb output tcp daddr != 127.0.0.0/8 redirect to :1080 2>/dev/null; then
+        NFT_ERR=$($NFT add table ip nanosb 2>&1) && NFT_ERR="$NFT_ERR
+$($NFT add chain ip nanosb output '{ type nat hook output priority -100 ; policy accept ; }' 2>&1)" && NFT_ERR="$NFT_ERR
+$($NFT add rule ip nanosb output tcp daddr != 127.0.0.0/8 redirect to :1080 2>&1)"
+        if [ $? -eq 0 ]; then
             REDIRECT_OK=true
             echo "nanosb-init: nft NAT REDIRECT to vsock_proxy :1080"
         else
-            echo "nanosb-init: nft failed, trying iptables fallback"
+            echo "nanosb-init: nft failed: $NFT_ERR"
         fi
     fi
 
@@ -54,9 +55,12 @@ if pidof vsock_proxy >/dev/null 2>&1; then
     if [ "$REDIRECT_OK" = "false" ]; then
         for ipt in iptables-nft /usr/sbin/iptables-nft iptables /usr/sbin/iptables; do
             if command -v "$ipt" >/dev/null 2>&1; then
-                if $ipt -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 -j REDIRECT --to-port 1080 2>/dev/null; then
+                IPT_ERR=$($ipt -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 -j REDIRECT --to-port 1080 2>&1)
+                if [ $? -eq 0 ]; then
                     REDIRECT_OK=true
                     echo "nanosb-init: iptables REDIRECT to vsock_proxy :1080 (via $ipt)"
+                else
+                    echo "nanosb-init: $ipt failed: $IPT_ERR"
                 fi
                 break
             fi
