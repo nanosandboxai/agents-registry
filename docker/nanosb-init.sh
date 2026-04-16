@@ -23,7 +23,7 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v10)"
+echo "nanosb-init: starting (v11)"
 
 # ---------------------------------------------------------------
 # 0b. Outbound proxy routing (Windows HCS)
@@ -33,8 +33,21 @@ echo "nanosb-init: starting (v10)"
 # The iptables binary is only available in the full rootfs (not the boot
 # initrd), so this rule must be set here — after switch_root.
 if pidof vsock_proxy >/dev/null 2>&1; then
-    iptables -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 -j REDIRECT --to-port 1080 2>/dev/null || true
-    echo "nanosb-init: iptables REDIRECT to vsock_proxy :1080"
+    # Resolve iptables binary: the 'iptables' command is an alternatives symlink
+    # that doesn't survive 9P/NTFS (Windows HCS). Fall back to the real binaries.
+    IPTABLES=""
+    for ipt in iptables iptables-legacy iptables-nft /usr/sbin/iptables-legacy /usr/sbin/iptables-nft; do
+        if command -v "$ipt" >/dev/null 2>&1; then
+            IPTABLES="$ipt"
+            break
+        fi
+    done
+    if [ -n "$IPTABLES" ]; then
+        $IPTABLES -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 -j REDIRECT --to-port 1080 2>/dev/null || true
+        echo "nanosb-init: iptables REDIRECT to vsock_proxy :1080 (via $IPTABLES)"
+    else
+        echo "nanosb-init: WARNING: iptables not found, outbound TCP will not work"
+    fi
 fi
 
 # ---------------------------------------------------------------
