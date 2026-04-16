@@ -35,8 +35,10 @@ echo "nanosb-init: starting (v11)"
 if pidof vsock_proxy >/dev/null 2>&1; then
     # Resolve iptables binary: the 'iptables' command is an alternatives symlink
     # that doesn't survive 9P/NTFS (Windows HCS). Fall back to the real binaries.
+    # Prefer iptables-nft: the WSL kernel has nftables built-in (=y) but
+    # legacy iptables as modules (=m), and we boot with nomodule.
     IPTABLES=""
-    for ipt in iptables iptables-legacy iptables-nft /usr/sbin/iptables-legacy /usr/sbin/iptables-nft; do
+    for ipt in iptables-nft /usr/sbin/iptables-nft iptables /usr/sbin/iptables; do
         if command -v "$ipt" >/dev/null 2>&1; then
             IPTABLES="$ipt"
             break
