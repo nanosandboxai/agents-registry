@@ -23,7 +23,7 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v14)"
+echo "nanosb-init: starting (v15)"
 
 # ---------------------------------------------------------------
 # 0b. Outbound proxy routing (Windows HCS)
@@ -37,25 +37,19 @@ echo "nanosb-init: starting (v14)"
 if pidof vsock_proxy >/dev/null 2>&1; then
     REDIRECT_OK=false
 
-    # Try nft first (direct nftables API — works with built-in kernel support)
+    # Try nft (direct nftables API — no kernel modules needed).
+    # WSL kernel: NFT_NAT=y (dnat built-in), NFT_REDIR=m (redirect needs module).
+    # Use dnat instead of redirect since we boot with nomodule.
     if command -v nft >/dev/null 2>&1 || [ -x /usr/sbin/nft ]; then
         NFT=$(command -v nft 2>/dev/null || echo /usr/sbin/nft)
-        echo "nanosb-init: trying nft at $NFT"
-        $NFT add table ip nanosb 2>&1
-        E1=$?
-        echo "nanosb-init: nft add table: exit=$E1"
-        $NFT add chain ip nanosb output '{ type nat hook output priority -100 ; policy accept ; }' 2>&1
-        E2=$?
-        echo "nanosb-init: nft add chain: exit=$E2"
-        $NFT add rule ip nanosb output tcp daddr != 127.0.0.0/8 redirect to :1080 2>&1
-        E3=$?
-        echo "nanosb-init: nft add rule: exit=$E3"
-        if [ $E1 -eq 0 ] && [ $E2 -eq 0 ] && [ $E3 -eq 0 ]; then
+        if $NFT add table ip nanosb 2>/dev/null \
+           && $NFT add chain ip nanosb output '{ type nat hook output priority -100 ; policy accept ; }' 2>/dev/null \
+           && $NFT add rule ip nanosb output tcp daddr != 127.0.0.0/8 dnat to 127.0.0.1:1080 2>/dev/null; then
             REDIRECT_OK=true
-            echo "nanosb-init: nft NAT REDIRECT to vsock_proxy :1080"
+            echo "nanosb-init: nft DNAT to vsock_proxy 127.0.0.1:1080"
         else
-            echo "nanosb-init: nft failed (table=$E1 chain=$E2 rule=$E3)"
-            $NFT list ruleset 2>&1
+            NFT_ERR=$($NFT add rule ip nanosb output tcp daddr != 127.0.0.0/8 dnat to 127.0.0.1:1080 2>&1)
+            echo "nanosb-init: nft dnat failed: $NFT_ERR"
         fi
     fi
 
