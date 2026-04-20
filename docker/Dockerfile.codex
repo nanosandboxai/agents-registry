@@ -22,6 +22,19 @@ RUN npm install -g @openai/codex \
     && npm install -g "@openai/codex-${PLATFORM}@npm:@openai/codex@${CODEX_VERSION}-${PLATFORM}" \
     && npm cache clean --force
 
+# Replace /usr/local/bin/codex (which buildx-under-QEMU materializes as a
+# regular file copy instead of a symlink to the module's bin/codex.js). When
+# Node runs the file directly from /usr/local/bin/, createRequire resolves
+# from that directory and cannot find the sibling global package
+# @openai/codex-linux-x64 under /usr/local/lib/node_modules/, producing
+# "Missing optional dependency @openai/codex-linux-x64" at startup. An exec
+# wrapper that invokes node against the real module path fixes resolution.
+RUN CODEX_JS="/usr/local/lib/node_modules/@openai/codex/bin/codex.js" \
+    && test -f "$CODEX_JS" \
+    && rm -f /usr/local/bin/codex \
+    && printf '#!/bin/sh\nexec node %s "$@"\n' "$CODEX_JS" > /usr/local/bin/codex \
+    && chmod +x /usr/local/bin/codex
+
 RUN codex --version && echo "Codex: OK"
 RUN rm -rf /workspace/*
 
