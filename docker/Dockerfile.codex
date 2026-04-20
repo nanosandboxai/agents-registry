@@ -3,7 +3,19 @@ FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.description="Codex agent for nanosandbox sandboxes"
 
-RUN npm install -g @openai/codex \
+# Install codex CLI plus its platform-specific native binary. The wrapper
+# package @openai/codex depends on @openai/codex-linux-x64 (or -arm64) via
+# optionalDependencies, but buildx multi-arch builds under QEMU can skip
+# optional deps tagged with "cpu"/"os", leaving the runtime broken with
+# "Missing optional dependency @openai/codex-linux-x64". Install it
+# explicitly based on the target arch.
+RUN ARCH="$(uname -m)" \
+    && case "$ARCH" in \
+         x86_64)  NATIVE="@openai/codex-linux-x64" ;; \
+         aarch64) NATIVE="@openai/codex-linux-arm64" ;; \
+         *) echo "Unsupported arch for codex: $ARCH" >&2; exit 1 ;; \
+       esac \
+    && npm install -g @openai/codex "$NATIVE" \
     && npm cache clean --force
 
 RUN codex --version && echo "Codex: OK"
