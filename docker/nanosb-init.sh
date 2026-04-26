@@ -23,7 +23,7 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v17)"
+echo "nanosb-init: starting (v18)"
 
 # ---------------------------------------------------------------
 # 0b. Outbound proxy routing (Windows HCS)
@@ -247,7 +247,16 @@ fi
 # ---------------------------------------------------------------
 if [ -x /usr/local/bin/agent-gateway ]; then
     echo "nanosb-init: starting agent-gateway"
-    exec /usr/local/bin/agent-gateway --skip-network-init
+    # On Windows HCS (9P mode), networking is handled by init.krun's
+    # vsock_proxy + iptables REDIRECT — agent-gateway must skip eth0
+    # setup. On Linux/macOS (libkrun + gvproxy virtio-net), agent-gateway
+    # owns eth0 bring-up and DHCP-style static IP assignment, so it must
+    # NOT skip — otherwise eth0 stays DOWN and gvproxy can't ARP the guest.
+    if [ "$NANOSB_9P_MODE" = "true" ]; then
+        exec /usr/local/bin/agent-gateway --skip-network-init
+    else
+        exec /usr/local/bin/agent-gateway
+    fi
 else
     echo "nanosb-init: agent-gateway not found, entering hold mode"
     # Keep the VM alive so SSH access still works for debugging.
