@@ -206,6 +206,11 @@ SSHD_CONF
         chmod 0755 /run/sshd 2>/dev/null || true
         chown 0:0 /root 2>/dev/null || true
         chown -R 0:0 /root/.ssh 2>/dev/null || true
+
+        # microVM guests (libkrun) lack CAP_SETGID, so sshd's privilege
+        # separation child fails setgroups() → connection reset by peer.
+        # Disable privsep: the VM itself provides the isolation boundary.
+        printf '\nUsePrivilegeSeparation no\n' >> /etc/ssh/sshd_config 2>/dev/null || true
     fi
 
     # Copy SSH authorized_keys from root to developer user so that
@@ -238,8 +243,11 @@ SSHD_CONF
     # Ensure /workspace is writable by the developer user
     chown -R developer:developer /workspace 2>/dev/null || true
 
-    /usr/sbin/sshd 2>/dev/null || echo "nanosb-init: warning: sshd failed to start"
-    echo "nanosb-init: sshd started"
+    if /usr/sbin/sshd 2>&1; then
+        echo "nanosb-init: sshd started"
+    else
+        echo "nanosb-init: ERROR: sshd failed to start (exit $?)" >&2
+    fi
 fi
 
 # ---------------------------------------------------------------
