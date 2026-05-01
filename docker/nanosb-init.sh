@@ -23,7 +23,7 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v19)"
+echo "nanosb-init: starting (v20)"
 
 # ---------------------------------------------------------------
 # 0b. Outbound proxy routing (Windows HCS)
@@ -149,69 +149,42 @@ if [ -d /workspace ]; then
 fi
 
 # ---------------------------------------------------------------
-# 2. Start sshd (background) — enables SSH health check + access
+# 2. Start dropbear (background) — enables SSH health check + access
 # ---------------------------------------------------------------
-if [ -x /usr/sbin/sshd ]; then
+# dropbear is used instead of openssh-server to avoid privilege separation
+# issues on Linux virtiofs: openssh privsep requires /run/sshd owned by root,
+# but virtiofs exposes all files with the host user's UID so chown fails.
+# dropbear has no privsep requirement and works uniformly on all platforms.
+if [ -x /usr/sbin/dropbear ]; then
 
     if [ "$NANOSB_9P_MODE" = "true" ]; then
-        # --- 9P mode (Windows HCS) ---
-        # NTFS doesn't track Unix permissions. All files via 9P appear as
-        # 0777/root:root. sshd requires host keys be 0600 and authorized_keys
-        # be 0600 with proper ownership. Use tmpfs overlays to get real perms.
-
-        # tmpfs over /etc/ssh — gives us writable dir with proper permissions
-        mkdir -p /etc/ssh 2>/dev/null || true
-        mount -t tmpfs tmpfs /etc/ssh 2>/dev/null || true
-
-        # Write sshd_config with StrictModes disabled (belt + suspenders)
-        cat > /etc/ssh/sshd_config <<'SSHD_CONF'
-Port 22
-PermitRootLogin yes
-PubkeyAuthentication yes
-PasswordAuthentication no
-StrictModes no
-Subsystem sftp /usr/lib/openssh/sftp-server
-SSHD_CONF
-
-        # Generate host keys on tmpfs (proper 0600 permissions)
-        ssh-keygen -A 2>/dev/null || true
-
-        # tmpfs over /root/.ssh — writable with proper permissions
-        mkdir -p /root/.ssh 2>/dev/null || true
-        mount -t tmpfs tmpfs /root/.ssh 2>/dev/null || true
+        # 9P mode (Windows HCS): NTFS doesn't track Unix permissions.
+        # dropbear stores host keys in /etc/dropbear — mount a tmpfs so
+        # the auto-generated keys (-R) get proper 0600 permissions.
+        mkdir -p /etc/dropbear 2>/dev/null || true
+        mount -t tmpfs tmpfs /etc/dropbear 2>/dev/null || true
 
         # Inject SSH public key from kernel cmdline (set by Windows runtime)
         NANOSB_SSH_KEY=$(get_cmdline_param nanosb.ssh_key)
         if [ -n "$NANOSB_SSH_KEY" ]; then
-            # Key was passed with commas replacing spaces (cmdline limitation)
             SSH_KEY=$(echo "$NANOSB_SSH_KEY" | tr ',' ' ')
+            mkdir -p /root/.ssh 2>/dev/null || true
+            mount -t tmpfs tmpfs /root/.ssh 2>/dev/null || true
             echo "$SSH_KEY" > /root/.ssh/authorized_keys
             chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true
             echo "nanosb-init: SSH key injected from kernel cmdline"
         fi
-
-        mkdir -p /run/sshd 2>/dev/null || true
-        echo "nanosb-init: 9P SSH setup complete (tmpfs overlays)"
+        echo "nanosb-init: 9P dropbear setup complete"
     else
-        # --- Normal mode (virtiofs / macOS / Linux) ---
-        # Generate host keys if missing (first boot)
-        ssh-keygen -A 2>/dev/null || true
-
-        # Fix ownership: virtiofs passes through host UIDs, so rootfs files
-        # and directories appear owned by the macOS/Linux host user instead
-        # of root. /run/sshd is handled by init.c mounting a fresh tmpfs on
-        # /run before execing this script, so sshd privsep finds it root-owned.
+        # Normal mode (virtiofs / macOS / Linux)
         chown 0:0 /root 2>/dev/null || true
         chown -R 0:0 /root/.ssh 2>/dev/null || true
     fi
 
-    # Copy SSH authorized_keys from root to developer user so that
-    # the TUI can connect as 'developer' (non-root) for agent CLIs.
-    # Agents like Claude Code refuse --dangerously-skip-permissions as root.
+    # Copy authorized_keys to developer user — TUI connects as 'developer'
+    # because agents like Claude Code refuse --dangerously-skip-permissions as root.
     if [ -f /root/.ssh/authorized_keys ]; then
         mkdir -p /home/developer/.ssh 2>/dev/null || true
-        # In 9P mode, /home/developer/.ssh is on NTFS (0777). Use tmpfs overlay
-        # so sshd sees proper ownership and permissions.
         if [ "$NANOSB_9P_MODE" = "true" ]; then
             mount -t tmpfs tmpfs /home/developer/.ssh 2>/dev/null || true
         fi
@@ -221,27 +194,18 @@ SSHD_CONF
         chmod 600 /home/developer/.ssh/authorized_keys 2>/dev/null || true
     fi
 
-    # Unlock the developer account for SSH pubkey auth.
-    # Debian images create users with '!' in /etc/shadow (locked), and
-    # OpenSSH rejects pubkey auth for locked accounts even with StrictModes off.
-    # Change '!' to '*' (disabled password, but not locked).
+    # Unlock developer account (Debian locks accounts with '!' in /etc/shadow).
     usermod -p '*' developer 2>/dev/null || true
 
-    # Fix ownership of developer's entire home directory.
-    # virtiofs passes through host UIDs (e.g. macOS UID 501), so all files
-    # from the rootfs appear with wrong ownership inside the VM.
+    # Fix ownership of developer home and workspace.
     chown -R developer:developer /home/developer 2>/dev/null || true
-
-    # Ensure /workspace is writable by the developer user
     chown -R developer:developer /workspace 2>/dev/null || true
 
-    # -o UsePrivilegeSeparation=no: microVM guests (libkrun) lack CAP_SETGID,
-    # so the privsep child fails setgroups() → connection reset by peer.
-    # Command-line -o overrides any setting in sshd_config (first match wins).
-    if /usr/sbin/sshd -o UsePrivilegeSeparation=no 2>&1; then
-        echo "nanosb-init: sshd started"
+    # Start dropbear: -R auto-generates host keys, -E logs to stderr, -p 22
+    if /usr/sbin/dropbear -R -E -p 22 2>&1; then
+        echo "nanosb-init: dropbear started"
     else
-        echo "nanosb-init: ERROR: sshd failed to start (exit $?)" >&2
+        echo "nanosb-init: ERROR: dropbear failed to start (exit $?)" >&2
     fi
 fi
 
