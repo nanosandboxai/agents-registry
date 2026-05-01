@@ -201,16 +201,12 @@ SSHD_CONF
         # and directories appear owned by the macOS user (e.g. UID 501)
         # instead of root. sshd StrictModes requires /run/sshd, /root,
         # /root/.ssh, and authorized_keys to all be owned by root (UID 0).
+        # /run is part of the rootfs here (no systemd to auto-mount it as tmpfs).
+        # Mount a tmpfs so sshd can create /run/sshd with correct root ownership.
+        mount -t tmpfs tmpfs /run 2>/dev/null || true
         mkdir -p /run/sshd 2>/dev/null || true
-        chown 0:0 /run /run/sshd 2>/dev/null || true
-        chmod 0755 /run/sshd 2>/dev/null || true
         chown 0:0 /root 2>/dev/null || true
         chown -R 0:0 /root/.ssh 2>/dev/null || true
-
-        # microVM guests (libkrun) lack CAP_SETGID, so sshd's privilege
-        # separation child fails setgroups() → connection reset by peer.
-        # Disable privsep: the VM itself provides the isolation boundary.
-        printf '\nUsePrivilegeSeparation no\n' >> /etc/ssh/sshd_config 2>/dev/null || true
     fi
 
     # Copy SSH authorized_keys from root to developer user so that
@@ -243,7 +239,10 @@ SSHD_CONF
     # Ensure /workspace is writable by the developer user
     chown -R developer:developer /workspace 2>/dev/null || true
 
-    if /usr/sbin/sshd 2>&1; then
+    # -o UsePrivilegeSeparation=no: microVM guests (libkrun) lack CAP_SETGID,
+    # so the privsep child fails setgroups() → connection reset by peer.
+    # Command-line -o overrides any setting in sshd_config (first match wins).
+    if /usr/sbin/sshd -o UsePrivilegeSeparation=no 2>&1; then
         echo "nanosb-init: sshd started"
     else
         echo "nanosb-init: ERROR: sshd failed to start (exit $?)" >&2
