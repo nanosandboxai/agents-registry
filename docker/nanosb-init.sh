@@ -23,7 +23,7 @@ if ! mkdir /tmp/.nanosb-init-lock 2>/dev/null; then
     while true; do sleep 3600; done
 fi
 
-echo "nanosb-init: starting (v18)"
+echo "nanosb-init: starting (v19)"
 
 # ---------------------------------------------------------------
 # 0b. Outbound proxy routing (Windows HCS)
@@ -198,13 +198,9 @@ SSHD_CONF
         ssh-keygen -A 2>/dev/null || true
 
         # Fix ownership: virtiofs passes through host UIDs, so rootfs files
-        # and directories appear owned by the macOS user (e.g. UID 501)
-        # instead of root. sshd StrictModes requires /run/sshd, /root,
-        # /root/.ssh, and authorized_keys to all be owned by root (UID 0).
-        # /run is part of the rootfs here (no systemd to auto-mount it as tmpfs).
-        # Mount a tmpfs so sshd can create /run/sshd with correct root ownership.
-        mount -t tmpfs tmpfs /run 2>/dev/null || true
-        mkdir -p /run/sshd 2>/dev/null || true
+        # and directories appear owned by the macOS/Linux host user instead
+        # of root. /run/sshd is handled by init.c mounting a fresh tmpfs on
+        # /run before execing this script, so sshd privsep finds it root-owned.
         chown 0:0 /root 2>/dev/null || true
         chown -R 0:0 /root/.ssh 2>/dev/null || true
     fi
