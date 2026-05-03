@@ -39,7 +39,12 @@ def parse_yaml_frontmatter(content: str) -> dict:
         elif value.startswith("'") and value.endswith("'"):
             frontmatter[key] = value[1:-1]
         else:
-            frontmatter[key] = value
+            if value == "true":
+                frontmatter[key] = True
+            elif value == "false":
+                frontmatter[key] = False
+            else:
+                frontmatter[key] = value
     return frontmatter
 
 

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-05-03T13:41:40Z",
+  "updated_at": "2026-05-03T13:43:20Z",
   "registry_url": "https://github.com/devdone-labs/agents-registry",
   "agents": [
     {
@@ -106,7 +106,7 @@
         "Grep",
         "Glob"
       ],
-      "user_invocable": "true"
+      "user_invocable": true
     },
     {
       "name": "documentation",
@@ -123,7 +123,7 @@
         "Write",
         "Edit"
       ],
-      "user_invocable": "true"
+      "user_invocable": true
     },
     {
       "name": "git-workflow",
@@ -138,7 +138,7 @@
       "allowed_tools": [
         "Bash"
       ],
-      "user_invocable": "true"
+      "user_invocable": true
     },
     {
       "name": "security-best-practices",
@@ -155,7 +155,7 @@
         "Grep",
         "Glob"
       ],
-      "user_invocable": "true"
+      "user_invocable": true
     },
     {
       "name": "tdd",
@@ -174,7 +174,7 @@
         "Edit",
         "Grep"
       ],
-      "user_invocable": "true"
+      "user_invocable": true
     }
   ],
   "mcps": {
