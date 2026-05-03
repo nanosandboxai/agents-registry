@@ -116,6 +116,19 @@ if [ -f /etc/nanosb-mounts ]; then
 fi
 
 # ---------------------------------------------------------------
+# 1c. Exclude .nanosb-state from git tracking in the workspace
+# ---------------------------------------------------------------
+# Gateway-managed state lives in .nanosb-state/ (via HOME symlinks).
+# Exclude it from git so it never appears in git status or gets committed.
+if [ -d /workspace/.git ]; then
+    EXCLUDE_FILE="/workspace/.git/info/exclude"
+    if ! grep -qF ".nanosb-state/" "$EXCLUDE_FILE" 2>/dev/null; then
+        echo ".nanosb-state/" >> "$EXCLUDE_FILE" 2>/dev/null || true
+        echo "nanosb-init: added .nanosb-state/ to .git/info/exclude"
+    fi
+fi
+
+# ---------------------------------------------------------------
 # 1b. Link agent state dirs into /workspace/.nanosb-state/
 # ---------------------------------------------------------------
 # Agent session state (conversation history, config) is stored inside
@@ -143,6 +156,13 @@ if [ -d /workspace ]; then
         rm -rf /home/developer/.config/goose 2>/dev/null || true
     fi
     ln -sfn "$STATE_DIR/.config/goose" /home/developer/.config/goose 2>/dev/null || true
+
+    # ~/.claude.json (Claude user-level MCP config — lives outside ~/.claude/, needs own symlink)
+    ln -sfn "$STATE_DIR/.claude.json" "/home/developer/.claude.json" 2>/dev/null || true
+
+    # ~/.nanosandbox/ (agent-gateway registry state persistence)
+    mkdir -p "$STATE_DIR/.nanosandbox" 2>/dev/null || true
+    ln -sfn "$STATE_DIR/.nanosandbox" "/home/developer/.nanosandbox" 2>/dev/null || true
 
     chown -R developer:developer "$STATE_DIR" 2>/dev/null || true
     echo "nanosb-init: agent state symlinks created (workspace-backed)"
