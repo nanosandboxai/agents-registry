@@ -180,12 +180,17 @@ def scan_skills(skills_dir: Path) -> list:
     for f in sorted(skills_dir.glob("*.md")):
         content = f.read_text()
         fm = parse_yaml_frontmatter(content)
-        skills.append({
+        skill_entry = {
             "name": fm.get("name", f.stem),
             "description": fm.get("description", ""),
             "tags": fm.get("tags", []),
             "path": f"skills/{f.name}",
-        })
+        }
+        # Include optional enrichment fields when present
+        for opt_field in ("when_to_use", "allowed_tools", "user_invocable", "paths"):
+            if opt_field in fm:
+                skill_entry[opt_field] = fm[opt_field]
+        skills.append(skill_entry)
 
     return skills
 
