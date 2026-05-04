@@ -157,8 +157,12 @@ if [ -d /workspace ]; then
     fi
     ln -sfn "$STATE_DIR/.config/goose" /home/developer/.config/goose 2>/dev/null || true
 
-    # ~/.claude.json (Claude user-level MCP config — lives outside ~/.claude/, needs own symlink)
+    # ~/.claude.json (Claude auth + preferences — lives outside ~/.claude/, needs own symlink)
     ln -sfn "$STATE_DIR/.claude.json" "/home/developer/.claude.json" 2>/dev/null || true
+    # Pre-populate theme on first boot so Claude Code never prompts for terminal color.
+    if [ ! -f "$STATE_DIR/.claude.json" ]; then
+        echo '{"theme":"dark"}' > "$STATE_DIR/.claude.json" 2>/dev/null || true
+    fi
 
     # ~/.nanosandbox/ (agent-gateway registry state persistence)
     mkdir -p "$STATE_DIR/.nanosandbox" 2>/dev/null || true
