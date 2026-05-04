@@ -166,7 +166,7 @@ if [ -d /workspace ]; then
     # may have created the file without theme via Claude Code's migration write.
     if ! grep -q '"theme"' "$STATE_DIR/.claude.json" 2>/dev/null; then
         CLAUDE_USER_ID=$(cat /dev/urandom 2>/dev/null | head -c 32 | od -An -tx1 | tr -d ' \n' | head -c 64 || echo "nanosandbox000000000000000000000000000000000000000000000000000000")
-        printf '{"numStartups":1,"theme":"dark","firstStartTime":"%s","opusProMigrationComplete":true,"sonnet1m45MigrationComplete":true,"seenNotifications":{},"migrationVersion":13,"userID":"%s"}' \
+        printf '{"numStartups":1,"theme":"dark","hasCompletedOnboarding":true,"firstStartTime":"%s","opusProMigrationComplete":true,"sonnet1m45MigrationComplete":true,"seenNotifications":{},"migrationVersion":13,"userID":"%s"}' \
             "$(date -u +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || echo '2026-01-01T00:00:00.000Z')" \
             "$CLAUDE_USER_ID" > "$STATE_DIR/.claude.json" 2>/dev/null || true
     fi
