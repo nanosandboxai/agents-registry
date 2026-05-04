@@ -20,6 +20,11 @@ on:
           - goose
           - codex
           - cursor
+      sandbox_ref:
+        description: 'Branch/tag in sandbox repo to pull agent-gateway from (default: main)'
+        required: false
+        type: string
+        default: 'main'
 
 env:
   REGISTRY: ghcr.io
@@ -45,6 +50,7 @@ jobs:
         with:
           repository: nanosandboxai/sandbox
           token: ${{ secrets.SANDBOX_PAT }}
+          ref: ${{ inputs.sandbox_ref || 'main' }}
           path: _sandbox
           sparse-checkout: agent-gateway
           sparse-checkout-cone-mode: true
