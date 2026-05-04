@@ -159,11 +159,12 @@ if [ -d /workspace ]; then
 
     # ~/.claude.json (Claude auth + preferences — lives outside ~/.claude/, needs own symlink)
     ln -sfn "$STATE_DIR/.claude.json" "/home/developer/.claude.json" 2>/dev/null || true
-    # Pre-populate ~/.claude.json on first boot so Claude Code skips the onboarding
-    # wizard entirely. All migration fields must be present (including userID) —
-    # if any are absent Claude Code rewrites the file and strips theme in the process.
-    # We generate a unique userID per VM from /dev/urandom so telemetry is isolated.
-    if [ ! -f "$STATE_DIR/.claude.json" ]; then
+    # Ensure ~/.claude.json has theme + all migration fields so Claude Code
+    # skips the onboarding wizard. If any migration field is absent, Claude
+    # rewrites the file on startup and strips theme in the process.
+    # Check for "theme" (not just file existence) because a previous boot
+    # may have created the file without theme via Claude Code's migration write.
+    if ! grep -q '"theme"' "$STATE_DIR/.claude.json" 2>/dev/null; then
         CLAUDE_USER_ID=$(cat /dev/urandom 2>/dev/null | head -c 32 | od -An -tx1 | tr -d ' \n' | head -c 64 || echo "nanosandbox000000000000000000000000000000000000000000000000000000")
         printf '{"numStartups":1,"theme":"dark","firstStartTime":"%s","opusProMigrationComplete":true,"sonnet1m45MigrationComplete":true,"seenNotifications":{},"migrationVersion":13,"userID":"%s"}' \
             "$(date -u +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || echo '2026-01-01T00:00:00.000Z')" \
