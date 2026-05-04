@@ -164,7 +164,7 @@ func TestClaudeMcpPath(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("expected claude agent config")
 	}
-	const want = "/home/developer/.claude/settings.json"
+	const want = "/home/developer/.claude.json"
 	if cfg.ConfigPath != want {
 		t.Errorf("Claude MCP ConfigPath: got %q, want %q", cfg.ConfigPath, want)
 	}

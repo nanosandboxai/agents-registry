@@ -31,7 +31,7 @@ func NewManager() *Manager {
 			},
 			Servers: make(map[string]*McpServerDef),
 			Agents: map[string]*AgentMcpConfig{
-				"claude": {ConfigPath: "/home/developer/.claude/settings.json", Format: "claude"},
+				"claude": {ConfigPath: "/home/developer/.claude.json", Format: "claude"},
 				"goose":  {ConfigPath: "/home/developer/.config/goose/config.yaml", Format: "goose"},
 				"codex":  {ConfigPath: "/home/developer/.codex/config.toml", Format: "codex"},
 				"cursor": {ConfigPath: "/home/developer/.cursor/mcp.json", Format: "cursor"},
