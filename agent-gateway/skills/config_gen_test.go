@@ -83,8 +83,11 @@ func TestGenerateClaudePrompt(t *testing.T) {
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "<!-- nanosandbox agent: python-developer -->") {
-		t.Error("expected agent marker comment")
+	if !strings.Contains(content, "You are a Python expert.") {
+		t.Error("expected prompt content in file")
+	}
+	if !strings.Contains(content, "Sandbox Environment") {
+		t.Error("expected sandbox preamble")
 	}
 	if !strings.Contains(content, "You are a Python expert.") {
 		t.Error("expected prompt content")
@@ -123,25 +126,22 @@ func TestGenerateGooseAll(t *testing.T) {
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "<!-- nanosandbox agent: python-developer -->") {
-		t.Error("expected agent marker")
-	}
 	if !strings.Contains(content, "You are a Python expert.") {
 		t.Error("expected prompt content")
 	}
-	if !strings.Contains(content, "<!-- nanosandbox skill: git-workflow -->") {
-		t.Error("expected git-workflow skill marker")
+	if !strings.Contains(content, "## git-workflow") {
+		t.Error("expected git-workflow skill heading")
 	}
-	if !strings.Contains(content, "<!-- nanosandbox skill: tdd -->") {
-		t.Error("expected tdd skill marker")
+	if !strings.Contains(content, "## tdd") {
+		t.Error("expected tdd skill heading")
 	}
 	if !strings.Contains(content, "Red-green-refactor") {
 		t.Error("expected tdd content")
 	}
 
 	// Skills should be alphabetically sorted
-	gitIdx := strings.Index(content, "nanosandbox skill: git-workflow")
-	tddIdx := strings.Index(content, "nanosandbox skill: tdd")
+	gitIdx := strings.Index(content, "## git-workflow")
+	tddIdx := strings.Index(content, "## tdd")
 	if gitIdx > tddIdx {
 		t.Error("expected skills in alphabetical order (git-workflow before tdd)")
 	}
@@ -178,11 +178,11 @@ func TestGenerateCodexPrompt(t *testing.T) {
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "<!-- nanosandbox agent: rust-developer -->") {
-		t.Error("expected agent marker")
-	}
 	if !strings.Contains(content, "You write idiomatic Rust.") {
 		t.Error("expected prompt content")
+	}
+	if !strings.Contains(content, "Sandbox Environment") {
+		t.Error("expected sandbox preamble")
 	}
 }
 
@@ -297,11 +297,11 @@ func TestGenerateAllConfigs(t *testing.T) {
 		t.Fatalf("failed to read .goosehints: %v", err)
 	}
 	gooseContent := string(data)
-	if !strings.Contains(gooseContent, "nanosandbox agent: python-developer") {
-		t.Error("expected agent marker in .goosehints")
+	if !strings.Contains(gooseContent, "You are a Python developer.") {
+		t.Error("expected prompt in .goosehints")
 	}
-	if !strings.Contains(gooseContent, "nanosandbox skill: tdd") {
-		t.Error("expected skill marker in .goosehints")
+	if !strings.Contains(gooseContent, "## tdd") {
+		t.Error("expected tdd skill heading in .goosehints")
 	}
 
 	// Verify Codex: native SKILL.md in ~/.agents/skills/ + AGENTS.md (prompt only, no embedded skills)

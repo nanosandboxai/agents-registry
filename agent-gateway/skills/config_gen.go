@@ -82,7 +82,7 @@ func (m *Manager) generateForAgentLocked(agentName string, cfg *AgentSkillConfig
 // Prompt: ~/.claude/CLAUDE.md
 
 func generateClaudePrompt(path, agentName, prompt string) error {
-	content := fmt.Sprintf("<!-- nanosandbox agent: %s -->\n\n%s%s\n", agentName, sandboxPreamble, prompt)
+	content := fmt.Sprintf("%s%s\n", sandboxPreamble, prompt)
 	return writeFile(path, []byte(content))
 }
 
@@ -98,7 +98,6 @@ func generateGooseAll(path, agentName, prompt string, skills map[string]*SkillDe
 
 	// Agent prompt section
 	if agentName != "" || prompt != "" {
-		b.WriteString(fmt.Sprintf("<!-- nanosandbox agent: %s -->\n", agentName))
 		b.WriteString(prompt)
 		b.WriteString("\n\n")
 	}
@@ -107,7 +106,6 @@ func generateGooseAll(path, agentName, prompt string, skills map[string]*SkillDe
 	names := sortedSkillNames(skills)
 	for _, name := range names {
 		skill := skills[name]
-		b.WriteString(fmt.Sprintf("<!-- nanosandbox skill: %s -->\n", name))
 		b.WriteString(fmt.Sprintf("## %s\n\n", skill.Name))
 		if skill.Description != "" {
 			b.WriteString(skill.Description + "\n\n")
@@ -128,7 +126,6 @@ func generateGooseAll(path, agentName, prompt string, skills map[string]*SkillDe
 
 func generateCodexPrompt(path, agentName, prompt string) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "<!-- nanosandbox agent: %s -->\n\n", agentName)
 	b.WriteString(sandboxPreamble)
 	b.WriteString(prompt)
 	b.WriteString("\n")
