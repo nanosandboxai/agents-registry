@@ -9,23 +9,23 @@ import (
 var agentConfigs = map[string]*AgentSkillConfig{
 	"claude": {
 		Format:     "claude",
-		SkillsDir:  "/home/developer/.claude/skills",
-		PromptFile: "/home/developer/.claude/CLAUDE.md",
+		SkillsDir:  "/home/developer/.claude/skills",                       // ~/.claude/skills/<name>/SKILL.md
+		PromptFile: "/home/developer/.claude/CLAUDE.md",                    // Claude reads CLAUDE.md as system instructions
 	},
 	"goose": {
 		Format:     "goose",
-		SkillsDir:  "", // Goose uses a single .goosehints file, not SKILL.md files
-		PromptFile: "/home/developer/.config/goose/.goosehints",
+		SkillsDir:  "",                                                     // Goose has no native skill files — concatenated into .goosehints
+		PromptFile: "/home/developer/.config/goose/.goosehints",            // .goosehints appended to system prompt
 	},
 	"codex": {
 		Format:     "codex",
-		SkillsDir:  "", // Codex skills embedded in AGENTS.md via section markers
-		PromptFile: "/home/developer/.codex/AGENTS.md",
+		SkillsDir:  "/home/developer/.agents/skills",                       // ~/.agents/skills/<name>/SKILL.md (Codex native discovery)
+		PromptFile: "/home/developer/.codex/AGENTS.md",                     // AGENTS.md read as global instructions
 	},
 	"cursor": {
 		Format:     "cursor",
-		SkillsDir:  "", // Cursor skills embedded in rules file via section markers
-		PromptFile: "/home/developer/.cursor/rules/nanosandbox-agent.mdc",
+		SkillsDir:  "/home/developer/.cursor/rules",                        // ~/.cursor/rules/<name>.mdc (Cursor native rules discovery)
+		PromptFile: "/home/developer/.cursor/rules/nanosandbox-agent.mdc",  // alwaysApply rule for sandbox preamble
 	},
 }
 

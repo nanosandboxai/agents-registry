@@ -304,20 +304,24 @@ func TestGenerateAllConfigs(t *testing.T) {
 		t.Error("expected skill marker in .goosehints")
 	}
 
-	// Verify Codex: SKILL.md + AGENTS.md
+	// Verify Codex: native SKILL.md in ~/.agents/skills/ + AGENTS.md (prompt only, no embedded skills)
 	codexSkill := filepath.Join(dir, "codex", "skills", "tdd", "SKILL.md")
 	if _, err := os.Stat(codexSkill); os.IsNotExist(err) {
-		t.Error("expected Codex SKILL.md to exist")
+		t.Error("expected Codex SKILL.md to exist in ~/.agents/skills/tdd/")
 	}
 	codexPrompt := filepath.Join(dir, "codex", "AGENTS.md")
-	if _, err := os.Stat(codexPrompt); os.IsNotExist(err) {
-		t.Error("expected Codex AGENTS.md to exist")
+	data, err = os.ReadFile(codexPrompt)
+	if err != nil {
+		t.Fatalf("failed to read Codex AGENTS.md: %v", err)
+	}
+	if strings.Contains(string(data), "nanosandbox skill:") {
+		t.Error("Codex AGENTS.md should NOT contain embedded skills (skills are in ~/.agents/skills/)")
 	}
 
-	// Verify Cursor: SKILL.md + .mdc rule
-	cursorSkill := filepath.Join(dir, "cursor", "skills", "tdd", "SKILL.md")
-	if _, err := os.Stat(cursorSkill); os.IsNotExist(err) {
-		t.Error("expected Cursor SKILL.md to exist")
+	// Verify Cursor: individual .mdc rule files + alwaysApply preamble
+	cursorRule := filepath.Join(dir, "cursor", "skills", "nanosb-tdd.mdc")
+	if _, err := os.Stat(cursorRule); os.IsNotExist(err) {
+		t.Error("expected Cursor rule file nanosb-tdd.mdc to exist")
 	}
 	cursorPrompt := filepath.Join(dir, "cursor", "rules", "nanosandbox-agent.mdc")
 	data, err = os.ReadFile(cursorPrompt)
@@ -325,7 +329,10 @@ func TestGenerateAllConfigs(t *testing.T) {
 		t.Fatalf("failed to read cursor prompt: %v", err)
 	}
 	if !strings.Contains(string(data), "alwaysApply: true") {
-		t.Error("expected alwaysApply in cursor mdc file")
+		t.Error("expected alwaysApply in cursor preamble mdc file")
+	}
+	if strings.Contains(string(data), "nanosandbox skill:") {
+		t.Error("Cursor preamble should NOT contain embedded skills (skills are in individual .mdc files)")
 	}
 }
 

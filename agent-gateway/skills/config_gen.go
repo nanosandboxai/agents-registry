@@ -51,22 +51,26 @@ func (m *Manager) GenerateAllConfigs() error {
 func (m *Manager) generateForAgentLocked(agentName string, cfg *AgentSkillConfig) error {
 	switch cfg.Format {
 	case "claude":
-		if err := generateClaudeSkills(cfg.SkillsDir, m.skills); err != nil {
+		// Claude: individual SKILL.md files + CLAUDE.md prompt
+		if err := generateSkillMDFiles(cfg.SkillsDir, m.skills); err != nil {
 			return err
 		}
 		return generateClaudePrompt(cfg.PromptFile, m.agentName, m.agentPrompt)
 	case "goose":
+		// Goose: everything concatenated into .goosehints (no native skill files)
 		return generateGooseAll(cfg.PromptFile, m.agentName, m.agentPrompt, m.skills)
 	case "codex":
+		// Codex: native SKILL.md files in ~/.agents/skills/ + AGENTS.md prompt
 		if err := generateSkillMDFiles(cfg.SkillsDir, m.skills); err != nil {
 			return err
 		}
-		return generateCodexAll(cfg.PromptFile, m.agentName, m.agentPrompt, m.skills)
+		return generateCodexPrompt(cfg.PromptFile, m.agentName, m.agentPrompt)
 	case "cursor":
-		if err := generateSkillMDFiles(cfg.SkillsDir, m.skills); err != nil {
+		// Cursor: individual .mdc rule files in ~/.cursor/rules/ + alwaysApply preamble rule
+		if err := generateCursorRuleFiles(cfg.SkillsDir, m.skills); err != nil {
 			return err
 		}
-		return generateCursorAll(cfg.PromptFile, m.agentName, m.agentPrompt, m.skills)
+		return generateCursorPrompt(cfg.PromptFile, m.agentName, m.agentPrompt)
 	default:
 		log.Printf("[skills] unknown format %q for agent %s, skipping", cfg.Format, agentName)
 		return nil
@@ -74,12 +78,8 @@ func (m *Manager) generateForAgentLocked(agentName string, cfg *AgentSkillConfig
 }
 
 // --- Claude Code Format ---
-// Skills: /workspace/.claude/skills/<name>/SKILL.md
-// Prompt: /workspace/CLAUDE.md
-
-func generateClaudeSkills(skillsDir string, skills map[string]*SkillDef) error {
-	return generateSkillMDFiles(skillsDir, skills)
-}
+// Skills: ~/.claude/skills/<name>/SKILL.md (native Claude skills discovery)
+// Prompt: ~/.claude/CLAUDE.md
 
 func generateClaudePrompt(path, agentName, prompt string) error {
 	content := fmt.Sprintf("<!-- nanosandbox agent: %s -->\n\n%s%s\n", agentName, sandboxPreamble, prompt)
@@ -123,32 +123,23 @@ func generateGooseAll(path, agentName, prompt string, skills map[string]*SkillDe
 }
 
 // --- Codex Format ---
-// Skills: embedded in AGENTS.md via HTML comment section markers
-// Prompt: /home/developer/.codex/AGENTS.md
+// Skills: ~/.agents/skills/<name>/SKILL.md (native Codex discovery via $HOME/.agents/skills/)
+// Prompt: ~/.codex/AGENTS.md (global instructions, no embedded skills)
 
 func generateCodexPrompt(path, agentName, prompt string) error {
-	return generateCodexAll(path, agentName, prompt, nil)
-}
-
-func generateCodexAll(path, agentName, prompt string, skillsMap map[string]*SkillDef) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<!-- nanosandbox agent: %s -->\n\n", agentName)
 	b.WriteString(sandboxPreamble)
 	b.WriteString(prompt)
 	b.WriteString("\n")
-	writeEmbeddedSkills(&b, skillsMap)
 	return writeFile(path, []byte(b.String()))
 }
 
 // --- Cursor Format ---
-// Skills: embedded in rules file via HTML comment section markers
-// Prompt: /home/developer/.cursor/rules/nanosandbox-agent.mdc (with alwaysApply frontmatter)
+// Skills: ~/.cursor/rules/nanosb-<name>.mdc (individual rule files, auto-discovered by Cursor)
+// Prompt: ~/.cursor/rules/nanosandbox-agent.mdc (alwaysApply preamble rule)
 
 func generateCursorPrompt(path, agentName, prompt string) error {
-	return generateCursorAll(path, agentName, prompt, nil)
-}
-
-func generateCursorAll(path, agentName, prompt string, skillsMap map[string]*SkillDef) error {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "description: \"Nanosandbox agent definition: %s\"\n", agentName)
@@ -157,8 +148,43 @@ func generateCursorAll(path, agentName, prompt string, skillsMap map[string]*Ski
 	b.WriteString(sandboxPreamble)
 	b.WriteString(prompt)
 	b.WriteString("\n")
-	writeEmbeddedSkills(&b, skillsMap)
 	return writeFile(path, []byte(b.String()))
+}
+
+// generateCursorRuleFiles writes each skill as a separate .mdc rule file
+// in ~/.cursor/rules/. Cursor auto-discovers and applies rules from this directory.
+func generateCursorRuleFiles(rulesDir string, skills map[string]*SkillDef) error {
+	if rulesDir == "" {
+		return nil
+	}
+
+	if err := os.MkdirAll(rulesDir, 0755); err != nil {
+		return fmt.Errorf("creating dir %s: %w", rulesDir, err)
+	}
+
+	for name, skill := range skills {
+		var b strings.Builder
+		b.WriteString("---\n")
+		fmt.Fprintf(&b, "description: \"%s\"\n", skill.Description)
+		// Use agent-decided application: Cursor reads the description
+		// and activates the rule when relevant to the user's task.
+		b.WriteString("alwaysApply: false\n")
+		if len(skill.Paths) > 0 {
+			fmt.Fprintf(&b, "globs: %s\n", strings.Join(skill.Paths, ", "))
+		}
+		b.WriteString("---\n\n")
+		fmt.Fprintf(&b, "# %s\n\n", skill.Name)
+		b.WriteString(skill.Content)
+		b.WriteString("\n")
+
+		path := filepath.Join(rulesDir, fmt.Sprintf("nanosb-%s.mdc", name))
+		if err := os.WriteFile(path, []byte(b.String()), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", path, err)
+		}
+		log.Printf("[skills] wrote %s", path)
+	}
+
+	return nil
 }
 
 // --- Shared: SKILL.md file generation for Claude/Codex/Cursor ---
@@ -190,22 +216,6 @@ func generateSkillMDFiles(skillsDir string, skills map[string]*SkillDef) error {
 }
 
 // --- Helpers ---
-
-// writeEmbeddedSkills appends skills to a prompt file using HTML comment section markers.
-// Used by both Codex (AGENTS.md) and Cursor (rules .mdc file).
-func writeEmbeddedSkills(b *strings.Builder, skillsMap map[string]*SkillDef) {
-	if len(skillsMap) == 0 {
-		return
-	}
-	names := sortedSkillNames(skillsMap)
-	for _, name := range names {
-		def := skillsMap[name]
-		fmt.Fprintf(b, "\n<!-- nanosandbox skill: %s -->\n", name)
-		fmt.Fprintf(b, "## %s\n\n", def.Name)
-		b.WriteString(def.Content)
-		b.WriteString("\n")
-	}
-}
 
 // writeSkillFrontmatter writes YAML frontmatter for a SKILL.md file,
 // including optional fields when non-empty.

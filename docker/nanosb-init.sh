@@ -171,6 +171,13 @@ if [ -d /workspace ]; then
             "$CLAUDE_USER_ID" > "$STATE_DIR/.claude.json" 2>/dev/null || true
     fi
 
+    # ~/.agents/ (Codex native skill discovery dir — ~/.agents/skills/<name>/SKILL.md)
+    mkdir -p "$STATE_DIR/.agents/skills" 2>/dev/null || true
+    if [ -e /home/developer/.agents ] && [ ! -L /home/developer/.agents ]; then
+        rm -rf /home/developer/.agents 2>/dev/null || true
+    fi
+    ln -sfn "$STATE_DIR/.agents" "/home/developer/.agents" 2>/dev/null || true
+
     # ~/.nanosandbox/ (agent-gateway registry state persistence)
     mkdir -p "$STATE_DIR/.nanosandbox" 2>/dev/null || true
     ln -sfn "$STATE_DIR/.nanosandbox" "/home/developer/.nanosandbox" 2>/dev/null || true
