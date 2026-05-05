@@ -122,11 +122,21 @@ func (m *Manager) GetServer(name string) *McpServerDef {
 }
 
 // AddServer registers a new MCP server definition.
+// Automatically populates per-agent command overrides for cross-agent compatibility.
 func (m *Manager) AddServer(name string, def *McpServerDef) {
+	AutoPopulateOverrides(def)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.config.Servers[name] = def
-	log.Printf("[mcp] added server %q", name)
+	if len(def.Overrides) > 0 {
+		agents := make([]string, 0, len(def.Overrides))
+		for a := range def.Overrides {
+			agents = append(agents, a)
+		}
+		log.Printf("[mcp] added server %q (overrides for: %v)", name, agents)
+	} else {
+		log.Printf("[mcp] added server %q", name)
+	}
 }
 
 // RemoveServer removes an MCP server by name.
@@ -200,4 +210,53 @@ func (m *Manager) Config() McpConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.config
+}
+
+// ServerAgentStatus describes what a specific agent receives for a server.
+type ServerAgentStatus struct {
+	Active   bool   `json:"active"`
+	Command  string `json:"command,omitempty"`
+	Excluded bool   `json:"excluded,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// ServerCompatInfo returns per-agent compatibility info for a named server.
+func (m *Manager) ServerCompatInfo(name string) map[string]*ServerAgentStatus {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	srv, ok := m.config.Servers[name]
+	if !ok {
+		return nil
+	}
+
+	result := make(map[string]*ServerAgentStatus)
+	for agentName := range m.config.Agents {
+		cmd, _ := srv.ResolveForAgent(agentName)
+		status := &ServerAgentStatus{Active: srv.Enabled, Command: cmd}
+
+		if srv.Overrides != nil {
+			if ov, ok := srv.Overrides[agentName]; ok {
+				if ov.Excluded {
+					status.Active = false
+					status.Excluded = true
+					status.Command = ""
+					status.Reason = fmt.Sprintf("no %s-compatible package for %q", agentName, srv.Command)
+				} else {
+					status.Reason = fmt.Sprintf("translated from %s to %s", srv.Command, ov.Command)
+				}
+			}
+		}
+		result[agentName] = status
+	}
+	return result
+}
+
+// AddServerRaw registers a server without running AutoPopulateOverrides.
+// Used when loading persisted state that already has overrides.
+func (m *Manager) AddServerRaw(name string, def *McpServerDef) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.config.Servers[name] = def
+	log.Printf("[mcp] loaded server %q (raw)", name)
 }

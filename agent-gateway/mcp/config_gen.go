@@ -35,7 +35,7 @@ func (m *Manager) GenerateAllConfigs() error {
 }
 
 func (m *Manager) generateForAgent(agentName string, agentCfg *AgentMcpConfig) error {
-	servers := m.enabledServersForAgentLocked(agentName)
+	servers := m.resolvedServersForAgent(agentName)
 
 	dir := filepath.Dir(agentCfg.ConfigPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -238,6 +238,31 @@ func GenerateCodexConfig(servers map[string]*McpServerDef) ([]byte, error) {
 
 func GenerateCursorConfig(servers map[string]*McpServerDef) ([]byte, error) {
 	return GenerateClaudeConfig(servers)
+}
+
+// resolvedServersForAgent returns enabled servers for an agent with per-agent
+// overrides applied. Excluded servers are omitted. Each returned McpServerDef
+// is a copy with the correct command/args for that specific agent.
+func (m *Manager) resolvedServersForAgent(agentName string) map[string]*McpServerDef {
+	base := m.enabledServersForAgentLocked(agentName)
+	result := make(map[string]*McpServerDef, len(base))
+	for name, srv := range base {
+		// Check for per-agent exclusion (e.g. uvx-only package on codex).
+		if srv.Overrides != nil {
+			if ov, ok := srv.Overrides[agentName]; ok && ov.Excluded {
+				log.Printf("[mcp] skipping %q for %s (excluded: no compatible runtime)", name, agentName)
+				continue
+			}
+		}
+		cmd, args := srv.ResolveForAgent(agentName)
+		result[name] = &McpServerDef{
+			Command: cmd,
+			Args:    args,
+			Env:     srv.Env,
+			Enabled: srv.Enabled,
+		}
+	}
+	return result
 }
 
 // --- Helpers ---

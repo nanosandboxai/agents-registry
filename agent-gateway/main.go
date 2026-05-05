@@ -606,10 +606,32 @@ func stopHandler(w http.ResponseWriter, r *http.Request) {
 // MCP Management Handlers
 // ---------------------------------------------------------------------------
 
+// mcpMutationResponse is returned by all MCP mutation endpoints (add, update,
+// remove, enable, disable). Includes per-agent compatibility info and any
+// warnings from config generation.
+type mcpMutationResponse struct {
+	Status   string                                `json:"status"`
+	Name     string                                `json:"name"`
+	Agents   map[string]*mcp.ServerAgentStatus     `json:"agents,omitempty"`
+	Warnings []string                              `json:"warnings,omitempty"`
+}
+
 func mcpListHandler(mgr *mcp.Manager) http.HandlerFunc {
+	type serverEntry struct {
+		*mcp.McpServerDef
+		Agents map[string]*mcp.ServerAgentStatus `json:"agents,omitempty"`
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		servers := mgr.ListServers()
+		result := make(map[string]*serverEntry, len(servers))
+		for name, def := range servers {
+			result[name] = &serverEntry{
+				McpServerDef: def,
+				Agents:       mgr.ServerCompatInfo(name),
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mgr.ListServers())
+		json.NewEncoder(w).Encode(result)
 	}
 }
 
@@ -637,13 +659,23 @@ func mcpAddHandler(mgr *mcp.Manager, skillsMgr *skills.Manager) http.HandlerFunc
 			Env:     req.Env,
 			Enabled: req.Enabled,
 		})
+
+		var warnings []string
 		if err := mgr.GenerateAllConfigs(); err != nil {
 			log.Printf("[agent-gateway] WARNING: failed to regenerate MCP configs: %v", err)
+			warnings = append(warnings, fmt.Sprintf("config generation: %v", err))
 		}
 		persistState(mgr, skillsMgr)
+
+		resp := mcpMutationResponse{
+			Status:   "added",
+			Name:     req.Name,
+			Agents:   mgr.ServerCompatInfo(req.Name),
+			Warnings: warnings,
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		fmt.Fprintf(w, `{"status":"added","name":%q}`, req.Name)
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -664,12 +696,15 @@ func mcpUpdateHandler(mgr *mcp.Manager, skillsMgr *skills.Manager) http.HandlerF
 			return
 		}
 		mgr.AddServer(name, &def)
+		var warnings []string
 		if err := mgr.GenerateAllConfigs(); err != nil {
 			log.Printf("[agent-gateway] WARNING: failed to regenerate MCP configs: %v", err)
+			warnings = append(warnings, fmt.Sprintf("config generation: %v", err))
 		}
 		persistState(mgr, skillsMgr)
+		resp := mcpMutationResponse{Status: "updated", Name: name, Agents: mgr.ServerCompatInfo(name), Warnings: warnings}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"updated","name":%q}`, name)
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -685,12 +720,15 @@ func mcpDeleteHandler(mgr *mcp.Manager, skillsMgr *skills.Manager) http.HandlerF
 			return
 		}
 		mgr.RemoveServer(name)
+		var warnings []string
 		if err := mgr.GenerateAllConfigs(); err != nil {
 			log.Printf("[agent-gateway] WARNING: failed to regenerate MCP configs: %v", err)
+			warnings = append(warnings, fmt.Sprintf("config generation: %v", err))
 		}
 		persistState(mgr, skillsMgr)
+		resp := mcpMutationResponse{Status: "removed", Name: name, Warnings: warnings}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"removed","name":%q}`, name)
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -702,12 +740,15 @@ func mcpEnableHandler(mgr *mcp.Manager, skillsMgr *skills.Manager) http.HandlerF
 			return
 		}
 		mgr.EnableServer(name)
+		var warnings []string
 		if err := mgr.GenerateAllConfigs(); err != nil {
 			log.Printf("[agent-gateway] WARNING: failed to regenerate MCP configs: %v", err)
+			warnings = append(warnings, fmt.Sprintf("config generation: %v", err))
 		}
 		persistState(mgr, skillsMgr)
+		resp := mcpMutationResponse{Status: "enabled", Name: name, Agents: mgr.ServerCompatInfo(name), Warnings: warnings}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"enabled","name":%q}`, name)
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -719,12 +760,15 @@ func mcpDisableHandler(mgr *mcp.Manager, skillsMgr *skills.Manager) http.Handler
 			return
 		}
 		mgr.DisableServer(name)
+		var warnings []string
 		if err := mgr.GenerateAllConfigs(); err != nil {
 			log.Printf("[agent-gateway] WARNING: failed to regenerate MCP configs: %v", err)
+			warnings = append(warnings, fmt.Sprintf("config generation: %v", err))
 		}
 		persistState(mgr, skillsMgr)
+		resp := mcpMutationResponse{Status: "disabled", Name: name, Warnings: warnings}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"disabled","name":%q}`, name)
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 

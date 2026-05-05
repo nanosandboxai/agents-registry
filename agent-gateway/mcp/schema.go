@@ -20,6 +20,30 @@ type McpServerDef struct {
 	Args    []string          `yaml:"args"    json:"args"`
 	Env     map[string]string `yaml:"env"     json:"env,omitempty"`
 	Enabled bool              `yaml:"enabled" json:"enabled"`
+	// Per-agent command overrides. When generating config for an agent,
+	// if an override exists the agent gets that command+args instead of
+	// the top-level ones. This lets a single /mcp add --all work across
+	// agents that need different package managers (uvx vs npx).
+	Overrides map[string]*McpServerOverride `yaml:"overrides,omitempty" json:"overrides,omitempty"`
+}
+
+// McpServerOverride replaces Command and/or Args for a specific agent.
+// If Excluded is true, the server is skipped entirely for that agent.
+type McpServerOverride struct {
+	Command  string   `yaml:"command" json:"command"`
+	Args     []string `yaml:"args"    json:"args"`
+	Excluded bool     `yaml:"excluded,omitempty" json:"excluded,omitempty"`
+}
+
+// ResolveForAgent returns the command and args to use for a given agent.
+// If an override exists for that agent, it is used; otherwise the defaults.
+func (d *McpServerDef) ResolveForAgent(agentName string) (string, []string) {
+	if d.Overrides != nil {
+		if ov, ok := d.Overrides[agentName]; ok {
+			return ov.Command, ov.Args
+		}
+	}
+	return d.Command, d.Args
 }
 
 // AgentMcpConfig defines per-agent config generation rules.

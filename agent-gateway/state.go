@@ -67,7 +67,7 @@ func loadGatewayState(mcpMgr *mcp.Manager, skillsMgr *skills.Manager, path strin
 		skillsMgr.AddSkill(name, def)
 	}
 	for name, def := range state.McpServers {
-		mcpMgr.AddServer(name, def)
+		mcpMgr.AddServerRaw(name, def) // Raw: preserves persisted overrides without re-computing
 	}
 	if state.AgentName != "" {
 		skillsMgr.SetAgentDefinition(state.AgentName, state.AgentPrompt)
