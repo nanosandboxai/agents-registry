@@ -45,6 +45,21 @@ func NewManager() *Manager {
 	}
 }
 
+// ResetConfig clears only config-sourced skills and the agent definition.
+// Runtime-added skills (from TUI/API) are preserved across bootstrap.
+func (m *Manager) ResetConfig() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for name, def := range m.skills {
+		if def.Source != SourceRuntime {
+			delete(m.skills, name)
+		}
+	}
+	m.agentName = ""
+	m.agentPrompt = ""
+	log.Println("[skills] reset config-sourced skills and agent definition")
+}
+
 // AddSkill registers or updates a skill definition.
 func (m *Manager) AddSkill(name string, def *SkillDef) {
 	m.mu.Lock()

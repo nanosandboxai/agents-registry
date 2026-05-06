@@ -20,6 +20,7 @@ type McpServerDef struct {
 	Args    []string          `yaml:"args"    json:"args"`
 	Env     map[string]string `yaml:"env"     json:"env,omitempty"`
 	Enabled bool              `yaml:"enabled" json:"enabled"`
+	Source  string            `yaml:"source,omitempty"  json:"source,omitempty"` // "config" or "runtime"
 	// Per-agent command overrides. When generating config for an agent,
 	// if an override exists the agent gets that command+args instead of
 	// the top-level ones. This lets a single /mcp add --all work across

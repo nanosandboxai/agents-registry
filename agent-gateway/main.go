@@ -658,6 +658,7 @@ func mcpAddHandler(mgr *mcp.Manager, skillsMgr *skills.Manager) http.HandlerFunc
 			Args:    req.Args,
 			Env:     req.Env,
 			Enabled: req.Enabled,
+			Source:  "runtime",
 		})
 
 		var warnings []string
@@ -805,6 +806,7 @@ func skillsAddHandler(mgr *skills.Manager, mcpMgr *mcp.Manager) http.HandlerFunc
 			http.Error(w, `{"error":"name is required"}`, http.StatusBadRequest)
 			return
 		}
+		def.Source = skills.SourceRuntime
 		mgr.AddSkill(def.Name, &def)
 		if err := mgr.GenerateAllConfigs(); err != nil {
 			log.Printf("[agent-gateway] WARNING: failed to regenerate skill configs: %v", err)
@@ -973,6 +975,10 @@ func agentBootstrapHandler(skillsMgr *skills.Manager, mcpMgr *mcp.Manager) http.
 			return
 		}
 
+		// Reset config-sourced items; runtime-added (TUI) items are preserved.
+		skillsMgr.ResetConfig()
+		mcpMgr.ResetConfig()
+
 		// Set agent type — controls which config files are generated.
 		if req.AgentType != "" {
 			skillsMgr.SetAgentType(req.AgentType)
@@ -1000,14 +1006,16 @@ func agentBootstrapHandler(skillsMgr *skills.Manager, mcpMgr *mcp.Manager) http.
 			writeClaudeSettings(req.ClaudeSettings)
 		}
 
-		// Add all skills
+		// Add all skills (tagged as config-sourced)
 		for i := range req.Skills {
 			s := &req.Skills[i]
+			s.Source = skills.SourceConfig
 			skillsMgr.AddSkill(s.Name, s)
 		}
 
-		// Add MCP servers if provided
+		// Add MCP servers if provided (tagged as config-sourced)
 		for name, def := range req.McpServers {
+			def.Source = "config"
 			mcpMgr.AddServer(name, def)
 		}
 

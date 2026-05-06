@@ -1,11 +1,18 @@
 package skills
 
+// Source values for tracking where a skill/MCP server was defined.
+const (
+	SourceConfig  = "config"  // from sandbox.yml via bootstrap
+	SourceRuntime = "runtime" // added at runtime via TUI / API
+)
+
 // SkillDef defines a single skill with its content.
 type SkillDef struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Content     string `json:"content"`              // full markdown body
 	Version     string `json:"version,omitempty"`
+	Source      string `json:"source,omitempty"`      // "config" or "runtime"
 	// Optional fields used when generating per-agent config files.
 	WhenToUse     string   `json:"when_to_use,omitempty"`    // Claude auto-invoke hint
 	AllowedTools  []string `json:"allowed_tools,omitempty"`  // Claude pre-approved tools

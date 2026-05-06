@@ -342,7 +342,8 @@ func TestBuildAgentCommand_WithModel(t *testing.T) {
 
 func TestBuildAgentCommand_AutoMode_Claude(t *testing.T) {
 	autoMode = true
-	defer func() { autoMode = false }()
+	permissions = "allow_all"
+	defer func() { autoMode = false; permissions = "" }()
 
 	req := &MessageRequest{Agent: "claude", Message: "hello"}
 	sess := &agentSession{}
@@ -361,7 +362,8 @@ func TestBuildAgentCommand_AutoMode_Claude(t *testing.T) {
 
 func TestBuildAgentCommand_AutoMode_Codex(t *testing.T) {
 	autoMode = true
-	defer func() { autoMode = false }()
+	permissions = "allow_all"
+	defer func() { autoMode = false; permissions = "" }()
 
 	req := &MessageRequest{Agent: "codex", Message: "code this"}
 	sess := &agentSession{}
@@ -380,7 +382,8 @@ func TestBuildAgentCommand_AutoMode_Codex(t *testing.T) {
 
 func TestBuildAgentCommand_AutoMode_Cursor(t *testing.T) {
 	autoMode = true
-	defer func() { autoMode = false }()
+	permissions = "allow_all"
+	defer func() { autoMode = false; permissions = "" }()
 
 	req := &MessageRequest{Agent: "cursor", Message: "build this"}
 	sess := &agentSession{}

@@ -121,6 +121,19 @@ func (m *Manager) GetServer(name string) *McpServerDef {
 	return &cp
 }
 
+// ResetConfig clears only config-sourced MCP servers.
+// Runtime-added servers (from TUI/API) are preserved across bootstrap.
+func (m *Manager) ResetConfig() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for name, def := range m.config.Servers {
+		if def.Source != "runtime" {
+			delete(m.config.Servers, name)
+		}
+	}
+	log.Println("[mcp] reset config-sourced servers")
+}
+
 // AddServer registers a new MCP server definition.
 // Automatically populates per-agent command overrides for cross-agent compatibility.
 func (m *Manager) AddServer(name string, def *McpServerDef) {
