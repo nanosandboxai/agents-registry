@@ -187,6 +187,39 @@ if [ -d /workspace ]; then
 fi
 
 # ---------------------------------------------------------------
+# 1d. Prepare rootless package installation prefix
+# ---------------------------------------------------------------
+# Ensure the .local/ directory tree exists and has correct ownership.
+# The Dockerfile pre-creates this, but virtiofs mounts or first-boot
+# conditions may require re-initialization.
+PKG_PREFIX="/home/developer/.local"
+if [ ! -f "$PKG_PREFIX/var/lib/dpkg/status" ]; then
+    echo "nanosb-init: initializing package install prefix"
+    mkdir -p "$PKG_PREFIX/usr/bin" \
+        "$PKG_PREFIX/usr/lib" \
+        "$PKG_PREFIX/usr/include" \
+        "$PKG_PREFIX/usr/share" \
+        "$PKG_PREFIX/var/lib/apt/lists/partial" \
+        "$PKG_PREFIX/var/lib/dpkg/info" \
+        "$PKG_PREFIX/var/lib/dpkg/updates" \
+        "$PKG_PREFIX/var/lib/dpkg/triggers" \
+        "$PKG_PREFIX/var/log" \
+        "$PKG_PREFIX/cache/apt/archives/partial" \
+        "$PKG_PREFIX/etc/apt/apt.conf.d" \
+        "$PKG_PREFIX/etc/apt/sources.list.d" \
+        "$PKG_PREFIX/etc/apt/preferences.d" \
+        "$PKG_PREFIX/bin" \
+        "$PKG_PREFIX/lib" \
+        2>/dev/null || true
+    cp /var/lib/dpkg/status "$PKG_PREFIX/var/lib/dpkg/status" 2>/dev/null || true
+    cp /var/lib/dpkg/available "$PKG_PREFIX/var/lib/dpkg/available" 2>/dev/null || true
+    cp /etc/apt/sources.list "$PKG_PREFIX/etc/apt/sources.list" 2>/dev/null || true
+    cp /etc/apt/sources.list.d/*.sources "$PKG_PREFIX/etc/apt/sources.list.d/" 2>/dev/null || true
+    echo "nanosb-init: package install prefix ready"
+fi
+chown -R developer:developer "$PKG_PREFIX" 2>/dev/null || true
+
+# ---------------------------------------------------------------
 # 2. Start dropbear (background) — enables SSH health check + access
 # ---------------------------------------------------------------
 # dropbear is used instead of openssh-server to avoid privilege separation
