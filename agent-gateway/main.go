@@ -341,8 +341,16 @@ func streamCommand(ctx context.Context, w http.ResponseWriter, bin string, args 
 	// any pre-existing HOME=/USER= entries before setting the developer values.
 	cmdEnv = setEnv(cmdEnv, "HOME", "/home/developer")
 	cmdEnv = setEnv(cmdEnv, "USER", "developer")
-	cmdEnv = ensureEnv(cmdEnv, "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	cmdEnv = ensureEnv(cmdEnv, "PATH", "/home/developer/.local/usr/bin:/home/developer/.local/bin:/home/developer/.cargo/bin:/home/developer/go/bin:/home/developer/.npm-global/bin:/home/developer/.local/share/gem/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 	cmdEnv = ensureEnv(cmdEnv, "TERM", "dumb")
+	// Rootless package manager configuration: all installs go to user-local prefix.
+	cmdEnv = ensureEnv(cmdEnv, "PIP_USER", "1")
+	cmdEnv = ensureEnv(cmdEnv, "NPM_CONFIG_PREFIX", "/home/developer/.npm-global")
+	cmdEnv = ensureEnv(cmdEnv, "GEM_HOME", "/home/developer/.local/share/gem")
+	cmdEnv = ensureEnv(cmdEnv, "GOPATH", "/home/developer/go")
+	cmdEnv = ensureEnv(cmdEnv, "CARGO_HOME", "/home/developer/.cargo")
+	cmdEnv = ensureEnv(cmdEnv, "RUSTUP_HOME", "/home/developer/.rustup")
+	cmdEnv = ensureEnv(cmdEnv, "LD_LIBRARY_PATH", "/home/developer/.local/usr/lib:/home/developer/.local/lib")
 	// Goose permissions are set via environment variable.
 	if agentName == "goose" {
 		switch permissions {
