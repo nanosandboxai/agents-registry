@@ -41,6 +41,37 @@ RUN usermod -l developer -d /home/developer -m node \
     && chown -R developer:developer /home/developer \
     && find / -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
 
+# Set up rootless package installation prefix under developer's home.
+# All apt-get installs go to ~/.local/usr/, all state to ~/.local/var/.
+RUN mkdir -p /home/developer/.local/usr/bin \
+    /home/developer/.local/usr/lib \
+    /home/developer/.local/usr/include \
+    /home/developer/.local/usr/share \
+    /home/developer/.local/var/lib/apt/lists/partial \
+    /home/developer/.local/var/lib/dpkg/info \
+    /home/developer/.local/var/lib/dpkg/updates \
+    /home/developer/.local/var/lib/dpkg/triggers \
+    /home/developer/.local/var/log \
+    /home/developer/.local/cache/apt/archives/partial \
+    /home/developer/.local/etc/apt/apt.conf.d \
+    /home/developer/.local/etc/apt/sources.list.d \
+    /home/developer/.local/etc/apt/preferences.d \
+    /home/developer/.local/bin \
+    /home/developer/.local/lib \
+    /home/developer/.npm-global/bin \
+    /home/developer/.npm-global/lib/node_modules \
+    /home/developer/go/bin \
+    && cp /var/lib/dpkg/status /home/developer/.local/var/lib/dpkg/status \
+    && cp /var/lib/dpkg/available /home/developer/.local/var/lib/dpkg/available \
+    && cp /etc/apt/sources.list /home/developer/.local/etc/apt/sources.list 2>/dev/null \
+    || cp /etc/apt/sources.list.d/*.sources /home/developer/.local/etc/apt/sources.list.d/ 2>/dev/null || true \
+    && chown -R developer:developer /home/developer/.local /home/developer/.npm-global /home/developer/go
+
+# Install rootless apt-get/apt wrappers (take PATH precedence over /usr/bin/)
+COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt-get
+COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt
+RUN chmod +x /usr/local/bin/apt-get /usr/local/bin/apt
+
 # Copy agent-gateway binary from builder
 COPY --from=gateway-builder /build/agent-gateway /usr/local/bin/agent-gateway
 
