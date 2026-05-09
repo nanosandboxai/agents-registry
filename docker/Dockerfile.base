@@ -67,11 +67,6 @@ RUN mkdir -p /home/developer/.local/usr/bin \
     || cp /etc/apt/sources.list.d/*.sources /home/developer/.local/etc/apt/sources.list.d/ 2>/dev/null || true \
     && chown -R developer:developer /home/developer/.local /home/developer/.npm-global /home/developer/go
 
-# Install rootless apt-get/apt wrappers (take PATH precedence over /usr/bin/)
-COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt-get
-COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt
-RUN chmod +x /usr/local/bin/apt-get /usr/local/bin/apt
-
 # Copy agent-gateway binary from builder
 COPY --from=gateway-builder /build/agent-gateway /usr/local/bin/agent-gateway
 
@@ -95,6 +90,12 @@ WORKDIR /workspace
 # Copy init script (starts sshd + agent-gateway)
 COPY docker/nanosb-init.sh /usr/local/bin/nanosb-init.sh
 RUN chmod +x /usr/local/bin/nanosb-init.sh
+
+# Install rootless apt-get/apt wrappers LAST — after all build-time apt-get calls.
+# These wrappers use unshare --user which is not available during docker build.
+COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt-get
+COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt
+RUN chmod +x /usr/local/bin/apt-get /usr/local/bin/apt
 
 # Verify binaries
 RUN test -x /usr/local/bin/agent-gateway && echo "agent-gateway: OK" \
