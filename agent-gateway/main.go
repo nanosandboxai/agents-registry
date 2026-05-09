@@ -637,32 +637,52 @@ func pkgInstallHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binPath, req.Args...)
-	// Run as root (no sysProcAttrForDeveloper) — this is the whole point
 	cmd.Env = append(os.Environ(),
 		"DEBIAN_FRONTEND=noninteractive",
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 	)
 
-	output, err := cmd.CombinedOutput()
-
-	w.Header().Set("Content-Type", "application/json")
-	exitCode := 0
+	// Stream output line-by-line (like classic apt-get)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = 1
+		http.Error(w, fmt.Sprintf(`{"error":"stdout pipe: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+	cmd.Stderr = cmd.Stdout // merge stderr into stdout
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(w, "Error: %v\n", err)
+		return
+	}
+
+	// Stream each line as it arrives
+	flusher, canFlush := w.(http.Flusher)
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 256*1024), 1024*1024)
+	for scanner.Scan() {
+		fmt.Fprintln(w, scanner.Text())
+		if canFlush {
+			flusher.Flush()
 		}
 	}
 
-	resp := struct {
-		ExitCode int    `json:"exit_code"`
-		Output   string `json:"output"`
-	}{
-		ExitCode: exitCode,
-		Output:   string(output),
+	exitCode := 0
+	if err := cmd.Wait(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		}
 	}
-	json.NewEncoder(w).Encode(resp)
+
+	// Final line with exit code for the wrapper to parse
+	fmt.Fprintf(w, "\n__EXIT_CODE__:%d\n", exitCode)
+	if canFlush {
+		flusher.Flush()
+	}
 }
 
 func stopHandler(w http.ResponseWriter, r *http.Request) {
