@@ -190,7 +190,7 @@ fi
 # ---------------------------------------------------------------
 # 2. SSH key setup + developer account prep
 # ---------------------------------------------------------------
-# SSH server is embedded in agent-gateway (no separate dropbear needed).
+# SSH server is embedded in agent-gateway.
 # This section handles SSH key injection and developer account setup.
 
 if [ "$NANOSB_9P_MODE" = "true" ]; then

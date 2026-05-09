@@ -191,7 +191,7 @@ func loadAuthorizedKeys() []ssh.PublicKey {
 // Host key generation
 // ---------------------------------------------------------------------------
 
-const hostKeyPath = "/etc/dropbear/ssh_host_ed25519_key"
+const hostKeyPath = "/etc/nanosandbox/ssh_host_ed25519_key"
 
 // generateHostKey loads an existing PEM host key or generates a new ed25519 one.
 func generateHostKey() []byte {
@@ -217,7 +217,7 @@ func generateHostKey() []byte {
 	})
 
 	// Try to persist for reuse across restarts
-	if err := os.MkdirAll("/etc/dropbear", 0755); err == nil {
+	if err := os.MkdirAll("/etc/nanosandbox", 0755); err == nil {
 		_ = os.WriteFile(hostKeyPath, pemBlock, 0600)
 	}
 

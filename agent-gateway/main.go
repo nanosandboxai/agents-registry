@@ -1370,7 +1370,7 @@ func main() {
 		}
 	}()
 
-	// Start embedded SSH server (replaces dropbear).
+	// Start embedded SSH server.
 	go func() {
 		if err := startSSHServer(); err != nil {
 			log.Printf("[agent-gateway] SSH server error: %v", err)
