@@ -24,10 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iptables \
     nftables \
     bash \
-    dropbear-bin \
     procps \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /root/.ssh /etc/dropbear \
+    && mkdir -p /root/.ssh \
     && chmod 700 /root/.ssh
 
 # Create non-root user for running code agents.

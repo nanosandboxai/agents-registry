@@ -329,8 +329,11 @@ func streamCommand(ctx context.Context, w http.ResponseWriter, bin string, args 
 	// Claude Code refuse --dangerously-skip-permissions when running as root.
 	cmd.SysProcAttr = sysProcAttrForDeveloper()
 
-	// Build environment: inherit base env, overlay request-specific vars.
+	// Build environment: inherit base env, overlay secrets, overlay request-specific vars.
 	cmdEnv := os.Environ()
+	for k, v := range getSecretsEnv() {
+		cmdEnv = setEnv(cmdEnv, k, v)
+	}
 	for k, v := range env {
 		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -1248,6 +1251,20 @@ func setupMux(mcpMgr *mcp.Manager, skillsMgr *skills.Manager) *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/agent/bootstrap", agentBootstrapHandler(skillsMgr, mcpMgr))
 	mux.HandleFunc("POST /api/v1/agent/restart", agentRestartHandler())
 
+	// Secrets injection (populates env store for SSH sessions and exec)
+	mux.HandleFunc("POST /api/v1/secrets/env", func(w http.ResponseWriter, r *http.Request) {
+		var env map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		SetSecretsEnv(env)
+		log.Printf("[agent-gateway] secrets env updated: %d keys", len(env))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status":"ok","keys":%d}`, len(env))
+	})
+
 	return mux
 }
 
@@ -1352,6 +1369,14 @@ func main() {
 			log.Fatalf("[agent-gateway] server error: %v", err)
 		}
 	}()
+
+	// Start embedded SSH server (replaces dropbear).
+	go func() {
+		if err := startSSHServer(); err != nil {
+			log.Printf("[agent-gateway] SSH server error: %v", err)
+		}
+	}()
+	log.Println("[agent-gateway] SSH server started on :22")
 
 	// Wait for shutdown signal.
 	sig := <-sigCh
