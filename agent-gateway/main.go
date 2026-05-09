@@ -618,13 +618,15 @@ func pkgInstallHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Allowlist of package manager commands that may run as root
-	allowed := map[string]bool{
-		"apt-get": true,
-		"apt":     true,
-		"dpkg":    true,
+	// Allowlist of package manager commands that may run as root.
+	// Use full paths to avoid hitting the wrapper scripts at /usr/local/bin/.
+	allowed := map[string]string{
+		"apt-get": "/usr/bin/apt-get",
+		"apt":     "/usr/bin/apt",
+		"dpkg":    "/usr/bin/dpkg",
 	}
-	if !allowed[req.Command] {
+	binPath, ok := allowed[req.Command]
+	if !ok {
 		http.Error(w, fmt.Sprintf(`{"error":"command not allowed: %s"}`, req.Command), http.StatusForbidden)
 		return
 	}
@@ -634,7 +636,7 @@ func pkgInstallHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, req.Command, req.Args...)
+	cmd := exec.CommandContext(ctx, binPath, req.Args...)
 	// Run as root (no sysProcAttrForDeveloper) — this is the whole point
 	cmd.Env = append(os.Environ(),
 		"DEBIAN_FRONTEND=noninteractive",
