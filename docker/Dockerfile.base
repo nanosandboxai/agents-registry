@@ -15,7 +15,7 @@ LABEL org.opencontainers.image.source="https://github.com/nanosandboxai/agents-r
 LABEL org.opencontainers.image.description="Shared base image for nanosandbox agent containers"
 LABEL org.opencontainers.image.licenses="MIT"
 
-# System dependencies (agents + networking + SSH access)
+# System dependencies (agents + networking + SSH access + user namespace support)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -26,45 +26,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     dropbear-bin \
     procps \
+    uidmap \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /root/.ssh /etc/dropbear \
     && chmod 700 /root/.ssh
 
 # Create non-root user for running code agents.
 # Agents like Claude Code refuse --dangerously-skip-permissions as root.
-# No sudo — agents install packages via rootless wrappers (unshare + user prefix).
+# No sudo — agents install packages via user namespace remapping (like Sysbox/Podman).
 # node:22-slim already has a 'node' user at UID 1000 — rename it to 'developer'.
 RUN usermod -l developer -d /home/developer -m node \
     && groupmod -n developer node \
     && mkdir -p /home/developer/.ssh \
     && chmod 700 /home/developer/.ssh \
     && chown -R developer:developer /home/developer \
-    && find / -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
+    && echo "developer:0:65536" >> /etc/subuid \
+    && echo "developer:0:65536" >> /etc/subgid \
+    && find / -perm /6000 -type f \
+        -not -name "newuidmap" \
+        -not -name "newgidmap" \
+        -exec chmod a-s {} + 2>/dev/null || true
 
-# Set up rootless package installation prefix under developer's home.
-# All apt-get installs go to ~/.local/usr/, all state to ~/.local/var/.
-RUN mkdir -p /home/developer/.local/usr/bin \
-    /home/developer/.local/usr/lib \
-    /home/developer/.local/usr/include \
-    /home/developer/.local/usr/share \
-    /home/developer/.local/var/lib/apt/lists/partial \
-    /home/developer/.local/var/lib/dpkg/info \
-    /home/developer/.local/var/lib/dpkg/updates \
-    /home/developer/.local/var/lib/dpkg/triggers \
-    /home/developer/.local/var/log \
-    /home/developer/.local/cache/apt/archives/partial \
-    /home/developer/.local/etc/apt/apt.conf.d \
-    /home/developer/.local/etc/apt/sources.list.d \
-    /home/developer/.local/etc/apt/preferences.d \
-    /home/developer/.local/bin \
+# Create user-local directories for language package managers (pip, npm, cargo, go).
+# apt-get installs to system dirs via user namespace — no local prefix needed for apt.
+RUN mkdir -p /home/developer/.local/bin \
     /home/developer/.local/lib \
     /home/developer/.npm-global/bin \
     /home/developer/.npm-global/lib/node_modules \
     /home/developer/go/bin \
-    && cp /var/lib/dpkg/status /home/developer/.local/var/lib/dpkg/status \
-    && cp /var/lib/dpkg/available /home/developer/.local/var/lib/dpkg/available \
-    && cp /etc/apt/sources.list /home/developer/.local/etc/apt/sources.list 2>/dev/null \
-    || cp /etc/apt/sources.list.d/*.sources /home/developer/.local/etc/apt/sources.list.d/ 2>/dev/null || true \
     && chown -R developer:developer /home/developer/.local /home/developer/.npm-global /home/developer/go
 
 # Copy agent-gateway binary from builder
