@@ -186,19 +186,6 @@ if [ -d /workspace ]; then
     echo "nanosb-init: agent state symlinks created (workspace-backed)"
 fi
 
-# ---------------------------------------------------------------
-# 1d. Fix sudo ownership (macOS virtiofs UID mapping issue)
-# ---------------------------------------------------------------
-# On macOS, virtiofs maps all rootfs files to the host user's UID (501).
-# sudo requires /usr/bin/sudo owned by root (UID 0) with suid bit set,
-# and /etc/sudo.conf owned by root. Fix ownership at boot.
-if [ -x /usr/bin/sudo ]; then
-    chown root:root /usr/bin/sudo /etc/sudo.conf /etc/sudoers /etc/sudoers.d 2>/dev/null || true
-    chown root:root /etc/sudoers.d/* 2>/dev/null || true
-    chmod 4755 /usr/bin/sudo 2>/dev/null || true
-    chmod 440 /etc/sudoers /etc/sudoers.d/* 2>/dev/null || true
-    echo "nanosb-init: sudo ownership fixed"
-fi
 
 # ---------------------------------------------------------------
 # 2. Start dropbear (background) — enables SSH health check + access
