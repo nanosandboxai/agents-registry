@@ -195,9 +195,7 @@ fi
 
 if [ "$NANOSB_9P_MODE" = "true" ]; then
     # 9P mode (Windows HCS): NTFS doesn't track Unix permissions.
-    # Mount tmpfs for host key storage so permissions are correct.
-    mkdir -p /etc/dropbear 2>/dev/null || true
-    mount -t tmpfs tmpfs /etc/dropbear 2>/dev/null || true
+    # Mount tmpfs for SSH key storage so permissions are correct.
 
     # Inject SSH public key from kernel cmdline (set by Windows runtime)
     NANOSB_SSH_KEY=$(get_cmdline_param nanosb.ssh_key)
