@@ -187,13 +187,18 @@ if [ -d /workspace ]; then
 fi
 
 # ---------------------------------------------------------------
-# 1d. Package installation: no setup needed
+# 1d. Fix sudo ownership (macOS virtiofs UID mapping issue)
 # ---------------------------------------------------------------
-# Agent-gateway spawns all processes inside a user namespace with full
-# UID/GID mapping (Sysbox/Podman model). The process runs as UID 1000
-# but has all capabilities within the namespace. Any package manager
-# (apt-get, pip, npm, cargo, gem, go) installs to system dirs natively.
-# No local prefix, no wrappers, no per-tool configuration needed.
+# On macOS, virtiofs maps all rootfs files to the host user's UID (501).
+# sudo requires /usr/bin/sudo owned by root (UID 0) with suid bit set,
+# and /etc/sudo.conf owned by root. Fix ownership at boot.
+if [ -x /usr/bin/sudo ]; then
+    chown root:root /usr/bin/sudo /etc/sudo.conf /etc/sudoers /etc/sudoers.d 2>/dev/null || true
+    chown root:root /etc/sudoers.d/* 2>/dev/null || true
+    chmod 4755 /usr/bin/sudo 2>/dev/null || true
+    chmod 440 /etc/sudoers /etc/sudoers.d/* 2>/dev/null || true
+    echo "nanosb-init: sudo ownership fixed"
+fi
 
 # ---------------------------------------------------------------
 # 2. Start dropbear (background) — enables SSH health check + access
