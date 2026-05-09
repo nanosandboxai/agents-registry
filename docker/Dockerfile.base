@@ -61,7 +61,7 @@ RUN mkdir -p /home/developer/.config/goose \
 
 WORKDIR /workspace
 
-# Copy init script (starts sshd + agent-gateway)
+# Copy init script (sets up mounts, SSH keys, execs agent-gateway)
 COPY docker/nanosb-init.sh /usr/local/bin/nanosb-init.sh
 RUN chmod +x /usr/local/bin/nanosb-init.sh
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # nanosb-init.sh — PID 1 init script for nanosandbox VMs
 #
-# Starts sshd for direct access, then execs agent-gateway.
+# Sets up mounts, SSH keys, and execs agent-gateway (which embeds the SSH server).
 #
 # Networking is NOT configured here — it is handled by the VM runtime:
 #   - Linux/macOS: libkrun VMM configures gvproxy virtio-net
@@ -81,7 +81,7 @@ fi
 # ---------------------------------------------------------------
 # When the rootfs is a Plan9 share from a Windows host, NTFS doesn't
 # track Unix permissions. All files appear as 0777 through 9P.
-# sshd requires strict permissions on host keys and authorized_keys.
+# SSH requires strict permissions on host keys and authorized_keys.
 # We detect this via a kernel cmdline flag set by the Windows runtime.
 NANOSB_9P_MODE=false
 if grep -q 'nanosb.9p_rootfs=1' /proc/cmdline 2>/dev/null; then
