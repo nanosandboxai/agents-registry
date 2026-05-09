@@ -588,6 +588,81 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 	sseWrite(w, SSEEvent{Type: "exit", Code: &code})
 }
 
+// ---------------------------------------------------------------------------
+// Package Installation Handler
+// ---------------------------------------------------------------------------
+
+// PkgRequest is the JSON body for POST /api/v1/pkg/install.
+type PkgRequest struct {
+	Command string   `json:"command"` // e.g. "apt-get", "apt"
+	Args    []string `json:"args"`    // e.g. ["install", "-y", "python3"]
+}
+
+// pkgInstallHandler runs package manager commands as root.
+//
+// Code agents run as UID 1000 (developer) and cannot install system packages.
+// This endpoint runs the command as root (agent-gateway's UID) so that apt-get,
+// dpkg, and other system package managers work. The microVM is the security
+// boundary — root inside the VM is contained by the hypervisor.
+//
+// Only allows a fixed set of package manager commands for safety.
+func pkgInstallHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req PkgRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"invalid json: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	// Allowlist of package manager commands that may run as root
+	allowed := map[string]bool{
+		"apt-get": true,
+		"apt":     true,
+		"dpkg":    true,
+	}
+	if !allowed[req.Command] {
+		http.Error(w, fmt.Sprintf(`{"error":"command not allowed: %s"}`, req.Command), http.StatusForbidden)
+		return
+	}
+
+	log.Printf("[agent-gateway] pkg: %s %v", req.Command, req.Args)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, req.Command, req.Args...)
+	// Run as root (no sysProcAttrForDeveloper) — this is the whole point
+	cmd.Env = append(os.Environ(),
+		"DEBIAN_FRONTEND=noninteractive",
+		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+	)
+
+	output, err := cmd.CombinedOutput()
+
+	w.Header().Set("Content-Type", "application/json")
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = 1
+		}
+	}
+
+	resp := struct {
+		ExitCode int    `json:"exit_code"`
+		Output   string `json:"output"`
+	}{
+		ExitCode: exitCode,
+		Output:   string(output),
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
 func stopHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1126,6 +1201,7 @@ func setupMux(mcpMgr *mcp.Manager, skillsMgr *skills.Manager) *http.ServeMux {
 	mux.HandleFunc("/api/v1/health", healthHandler)
 	mux.HandleFunc("/api/v1/message", messageHandler)
 	mux.HandleFunc("/api/v1/exec", execHandler)
+	mux.HandleFunc("POST /api/v1/pkg/install", pkgInstallHandler)
 	mux.HandleFunc("/api/v1/stop", stopHandler)
 
 	// MCP management routes

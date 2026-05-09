@@ -26,24 +26,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     dropbear-bin \
     procps \
-    sudo \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /root/.ssh /etc/dropbear \
     && chmod 700 /root/.ssh
 
 # Create non-root user for running code agents.
 # Agents like Claude Code refuse --dangerously-skip-permissions as root.
-# Passwordless sudo is the industry standard (Codespaces, Gitpod, Cloud Shell).
-# Security boundary is the microVM (libkrun hypervisor), not OS-level privileges.
-# Other hardening layers remain: seccomp, reduced capabilities, read-only rootfs,
-# resource limits, stripped suid (except sudo itself).
+# No sudo — package installation goes through agent-gateway's /api/v1/pkg/install
+# endpoint which runs as root. Thin wrappers at /usr/local/bin/apt-get and /apt
+# forward to the gateway. The microVM is the security boundary.
 RUN usermod -l developer -d /home/developer -m node \
     && groupmod -n developer node \
     && mkdir -p /home/developer/.ssh \
     && chmod 700 /home/developer/.ssh \
     && chown -R developer:developer /home/developer \
-    && echo "developer ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/developer \
-    && chmod 440 /etc/sudoers.d/developer
+    && find / -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
 
 # Copy agent-gateway binary from builder
 COPY --from=gateway-builder /build/agent-gateway /usr/local/bin/agent-gateway
@@ -68,6 +65,12 @@ WORKDIR /workspace
 # Copy init script (starts sshd + agent-gateway)
 COPY docker/nanosb-init.sh /usr/local/bin/nanosb-init.sh
 RUN chmod +x /usr/local/bin/nanosb-init.sh
+
+# Install apt-get/apt wrappers that forward to agent-gateway's pkg endpoint.
+# Must be LAST — after all build-time apt-get calls (wrappers need the gateway running).
+COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt-get
+COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt
+RUN chmod +x /usr/local/bin/apt-get /usr/local/bin/apt
 
 # Verify binaries
 RUN test -x /usr/local/bin/agent-gateway && echo "agent-gateway: OK" \
