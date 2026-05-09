@@ -15,7 +15,7 @@ LABEL org.opencontainers.image.source="https://github.com/nanosandboxai/agents-r
 LABEL org.opencontainers.image.description="Shared base image for nanosandbox agent containers"
 LABEL org.opencontainers.image.licenses="MIT"
 
-# System dependencies (agents + networking + SSH access + user namespace support)
+# System dependencies (agents + networking + SSH access)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -26,35 +26,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     dropbear-bin \
     procps \
-    uidmap \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /root/.ssh /etc/dropbear \
     && chmod 700 /root/.ssh
 
 # Create non-root user for running code agents.
 # Agents like Claude Code refuse --dangerously-skip-permissions as root.
-# No sudo — agents install packages via user namespace remapping (like Sysbox/Podman).
-# node:22-slim already has a 'node' user at UID 1000 — rename it to 'developer'.
+# No sudo — agent-gateway spawns processes inside a user namespace with full
+# UID/GID mapping (Sysbox/Podman model). The process runs as UID 1000 but has
+# all capabilities within the namespace. The microVM is the security boundary.
 RUN usermod -l developer -d /home/developer -m node \
     && groupmod -n developer node \
     && mkdir -p /home/developer/.ssh \
     && chmod 700 /home/developer/.ssh \
     && chown -R developer:developer /home/developer \
-    && echo "developer:0:65536" >> /etc/subuid \
-    && echo "developer:0:65536" >> /etc/subgid \
-    && find / -perm /6000 -type f \
-        -not -name "newuidmap" \
-        -not -name "newgidmap" \
-        -exec chmod a-s {} + 2>/dev/null || true
-
-# Create user-local directories for language package managers (pip, npm, cargo, go).
-# apt-get installs to system dirs via user namespace — no local prefix needed for apt.
-RUN mkdir -p /home/developer/.local/bin \
-    /home/developer/.local/lib \
-    /home/developer/.npm-global/bin \
-    /home/developer/.npm-global/lib/node_modules \
-    /home/developer/go/bin \
-    && chown -R developer:developer /home/developer/.local /home/developer/.npm-global /home/developer/go
+    && find / -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
 
 # Copy agent-gateway binary from builder
 COPY --from=gateway-builder /build/agent-gateway /usr/local/bin/agent-gateway
@@ -79,12 +65,6 @@ WORKDIR /workspace
 # Copy init script (starts sshd + agent-gateway)
 COPY docker/nanosb-init.sh /usr/local/bin/nanosb-init.sh
 RUN chmod +x /usr/local/bin/nanosb-init.sh
-
-# Install rootless apt-get/apt wrappers LAST — after all build-time apt-get calls.
-# These wrappers use unshare --user which is not available during docker build.
-COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt-get
-COPY docker/rootless-apt-wrapper.sh /usr/local/bin/apt
-RUN chmod +x /usr/local/bin/apt-get /usr/local/bin/apt
 
 # Verify binaries
 RUN test -x /usr/local/bin/agent-gateway && echo "agent-gateway: OK" \

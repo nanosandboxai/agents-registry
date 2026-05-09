@@ -187,17 +187,13 @@ if [ -d /workspace ]; then
 fi
 
 # ---------------------------------------------------------------
-# 1d. Prepare user-local directories for language package managers
+# 1d. Package installation: no setup needed
 # ---------------------------------------------------------------
-# apt-get installs to system dirs via user namespace remapping.
-# Language-specific package managers (pip, npm, cargo, go) use these dirs.
-mkdir -p /home/developer/.local/bin \
-    /home/developer/.local/lib \
-    /home/developer/.npm-global/bin \
-    /home/developer/.npm-global/lib/node_modules \
-    /home/developer/go/bin \
-    2>/dev/null || true
-chown -R developer:developer /home/developer/.local /home/developer/.npm-global /home/developer/go 2>/dev/null || true
+# Agent-gateway spawns all processes inside a user namespace with full
+# UID/GID mapping (Sysbox/Podman model). The process runs as UID 1000
+# but has all capabilities within the namespace. Any package manager
+# (apt-get, pip, npm, cargo, gem, go) installs to system dirs natively.
+# No local prefix, no wrappers, no per-tool configuration needed.
 
 # ---------------------------------------------------------------
 # 2. Start dropbear (background) — enables SSH health check + access
