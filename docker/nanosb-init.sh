@@ -77,16 +77,17 @@ NFTRULE
 fi
 
 # ---------------------------------------------------------------
-# 0c. Detect 9P rootfs mode (Windows HCS)
+# 0c. Detect Windows shared-rootfs mode (9P/FUSE)
 # ---------------------------------------------------------------
 # When the rootfs is a Plan9 share from a Windows host, NTFS doesn't
 # track Unix permissions. All files appear as 0777 through 9P.
 # SSH requires strict permissions on host keys and authorized_keys.
 # We detect this via a kernel cmdline flag set by the Windows runtime.
 NANOSB_9P_MODE=false
-if grep -q 'nanosb.9p_rootfs=1' /proc/cmdline 2>/dev/null; then
+if grep -q 'nanosb.9p_rootfs=1' /proc/cmdline 2>/dev/null \
+    || grep -q 'nanosb.fuse_rootfs=1' /proc/cmdline 2>/dev/null; then
     NANOSB_9P_MODE=true
-    echo "nanosb-init: 9P rootfs mode detected (Windows HCS)"
+    echo "nanosb-init: Windows shared-rootfs mode detected (9P/FUSE)"
 fi
 
 # Helper: parse a key=value parameter from /proc/cmdline
@@ -100,7 +101,11 @@ get_cmdline_param() {
 # ---------------------------------------------------------------
 # The host writes /etc/nanosb-mounts with lines: "<tag> <mountpoint>"
 # Each line corresponds to a virtiofs device registered via krun_add_virtiofs.
-if [ -f /etc/nanosb-mounts ]; then
+# In Windows 9P/FUSE rootfs mode, workspace mounts are handled earlier by
+# plan9_mount/fuse_mount before chroot, so skip this virtiofs loop.
+if [ "$NANOSB_9P_MODE" = "true" ]; then
+    echo "nanosb-init: skipping virtiofs mount loop in Windows shared-rootfs mode"
+elif [ -f /etc/nanosb-mounts ]; then
     while read -r tag mountpoint; do
         [ -z "$tag" ] && continue
         mkdir -p "$mountpoint" 2>/dev/null || true
