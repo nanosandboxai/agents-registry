@@ -96,6 +96,56 @@ get_cmdline_param() {
 }
 
 # ---------------------------------------------------------------
+# 0d. Detect runAsRoot mode (host sets nanosb.run_as_root=1)
+# ---------------------------------------------------------------
+# When true the agent-gateway SSH/exec layer runs the user shell as uid 0
+# inside a fresh PID namespace (set by sysProcAttrForRoot in the Go code).
+# Otherwise the legacy developer (uid 1000) behavior applies.
+NANOSB_RUN_AS_ROOT=false
+if grep -qE '(^| )nanosb\.run_as_root=1( |$)' /proc/cmdline 2>/dev/null; then
+    NANOSB_RUN_AS_ROOT=true
+    echo "nanosb-init: run-as-root mode enabled (nanosb.run_as_root=1)"
+fi
+export NANOSB_RUN_AS_ROOT
+
+# Persist for any service that doesn't see our env (e.g. systemd-spawned).
+mkdir -p /etc/nanosb 2>/dev/null || true
+if [ "$NANOSB_RUN_AS_ROOT" = "true" ]; then
+    echo 1 > /etc/nanosb/run-as-root
+else
+    echo 0 > /etc/nanosb/run-as-root
+fi
+
+# ---------------------------------------------------------------
+# 0e. Hardening: protect agent-gateway from spawned user shells
+# ---------------------------------------------------------------
+# These steps are applied unconditionally — they cost nothing for the
+# developer-mode case and prevent in-VM tampering when a user shell runs
+# as root in the same VM. They are belt-and-braces alongside the PID
+# namespace separation enforced by sysProcAttrForRoot() in the gateway.
+#
+#   - yama.ptrace_scope=2: only processes with CAP_SYS_PTRACE in the
+#     gateway's user_ns can ptrace it. The user shell (even as root,
+#     in a child PID namespace) does not have it.
+#   - bind-mount the gateway binary read-only over itself so a compromised
+#     shell cannot overwrite it between gateway restarts.
+#   - bind-mount /etc/nanosb read-only so the run-as-root file can't be
+#     flipped by a user shell.
+if [ -w /proc/sys/kernel/yama/ptrace_scope ]; then
+    echo 2 > /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || true
+fi
+if [ -x /usr/local/bin/agent-gateway ]; then
+    mount --bind /usr/local/bin/agent-gateway /usr/local/bin/agent-gateway 2>/dev/null \
+      && mount -o remount,bind,ro /usr/local/bin/agent-gateway 2>/dev/null \
+      || true
+fi
+if [ -d /etc/nanosb ]; then
+    mount --bind /etc/nanosb /etc/nanosb 2>/dev/null \
+      && mount -o remount,bind,ro /etc/nanosb 2>/dev/null \
+      || true
+fi
+
+# ---------------------------------------------------------------
 # 1. Mount virtiofs shared directories
 # ---------------------------------------------------------------
 # The host writes /etc/nanosb-mounts with lines: "<tag> <mountpoint>"
