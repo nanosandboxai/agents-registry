@@ -77,17 +77,16 @@ NFTRULE
 fi
 
 # ---------------------------------------------------------------
-# 0c. Detect Windows shared-rootfs mode (9P/FUSE)
+# 0c. Detect Windows shared-rootfs mode (FUSE)
 # ---------------------------------------------------------------
-# When the rootfs is a Plan9 share from a Windows host, NTFS doesn't
-# track Unix permissions. All files appear as 0777 through 9P.
+# When the rootfs is shared from a Windows host over FUSE, NTFS doesn't
+# track Unix permissions.
 # SSH requires strict permissions on host keys and authorized_keys.
 # We detect this via a kernel cmdline flag set by the Windows runtime.
-NANOSB_9P_MODE=false
-if grep -q 'nanosb.9p_rootfs=1' /proc/cmdline 2>/dev/null \
-    || grep -q 'nanosb.fuse_rootfs=1' /proc/cmdline 2>/dev/null; then
-    NANOSB_9P_MODE=true
-    echo "nanosb-init: Windows shared-rootfs mode detected (9P/FUSE)"
+NANOSB_FUSE_ROOTFS_MODE=false
+if grep -q 'nanosb.fuse_rootfs=1' /proc/cmdline 2>/dev/null; then
+    NANOSB_FUSE_ROOTFS_MODE=true
+    echo "nanosb-init: Windows shared-rootfs mode detected (FUSE)"
 fi
 
 # Helper: parse a key=value parameter from /proc/cmdline
@@ -101,9 +100,9 @@ get_cmdline_param() {
 # ---------------------------------------------------------------
 # The host writes /etc/nanosb-mounts with lines: "<tag> <mountpoint>"
 # Each line corresponds to a virtiofs device registered via krun_add_virtiofs.
-# In Windows 9P/FUSE rootfs mode, workspace mounts are handled earlier by
-# plan9_mount/fuse_mount before chroot, so skip this virtiofs loop.
-if [ "$NANOSB_9P_MODE" = "true" ]; then
+# In Windows FUSE-rootfs mode, workspace mounts are handled earlier by
+# fuse_mount before chroot, so skip this virtiofs loop.
+if [ "$NANOSB_FUSE_ROOTFS_MODE" = "true" ]; then
     echo "nanosb-init: skipping virtiofs mount loop in Windows shared-rootfs mode"
 elif [ -f /etc/nanosb-mounts ]; then
     while read -r tag mountpoint; do
@@ -198,8 +197,8 @@ fi
 # SSH server is embedded in agent-gateway.
 # This section handles SSH key injection and developer account setup.
 
-if [ "$NANOSB_9P_MODE" = "true" ]; then
-    # 9P mode (Windows HCS): NTFS doesn't track Unix permissions.
+if [ "$NANOSB_FUSE_ROOTFS_MODE" = "true" ]; then
+    # Windows FUSE-rootfs mode (Windows HCS): NTFS doesn't track Unix permissions.
     # Mount tmpfs for SSH key storage so permissions are correct.
 
     # Inject SSH public key from kernel cmdline (set by Windows runtime)
@@ -212,7 +211,7 @@ if [ "$NANOSB_9P_MODE" = "true" ]; then
         chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true
         echo "nanosb-init: SSH key injected from kernel cmdline"
     fi
-    echo "nanosb-init: 9P SSH key setup complete"
+    echo "nanosb-init: FUSE SSH key setup complete"
 else
     # Normal mode (virtiofs / macOS / Linux)
     chown 0:0 /root 2>/dev/null || true
@@ -223,7 +222,7 @@ fi
 # because agents like Claude Code refuse --dangerously-skip-permissions as root.
 if [ -f /root/.ssh/authorized_keys ]; then
     mkdir -p /home/developer/.ssh 2>/dev/null || true
-    if [ "$NANOSB_9P_MODE" = "true" ]; then
+    if [ "$NANOSB_FUSE_ROOTFS_MODE" = "true" ]; then
         mount -t tmpfs tmpfs /home/developer/.ssh 2>/dev/null || true
     fi
     cp /root/.ssh/authorized_keys /home/developer/.ssh/authorized_keys 2>/dev/null || true
@@ -246,12 +245,12 @@ echo "nanosb-init: SSH key setup and developer account ready"
 # ---------------------------------------------------------------
 if [ -x /usr/local/bin/agent-gateway ]; then
     echo "nanosb-init: starting agent-gateway"
-    # On Windows HCS (9P mode), networking is handled by init.krun's
+    # On Windows HCS (FUSE-rootfs mode), networking is handled by init.krun's
     # vsock_proxy + iptables REDIRECT — agent-gateway must skip eth0
     # setup. On Linux/macOS (libkrun + gvproxy virtio-net), agent-gateway
     # owns eth0 bring-up and DHCP-style static IP assignment, so it must
     # NOT skip — otherwise eth0 stays DOWN and gvproxy can't ARP the guest.
-    if [ "$NANOSB_9P_MODE" = "true" ]; then
+    if [ "$NANOSB_FUSE_ROOTFS_MODE" = "true" ]; then
         exec /usr/local/bin/agent-gateway --skip-network-init
     else
         exec /usr/local/bin/agent-gateway
