@@ -138,6 +138,24 @@ func shouldPrintGooseConfigureHint(env []string) bool {
 	return detectGooseProviderFromEnv(envSliceToMap(env)) == nil
 }
 
+func runInteractiveCommandWithPTY(s ssh.Session, ptyReq ssh.Pty, cmd *exec.Cmd) error {
+	f, err := pty.Start(cmd)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_ = pty.Setsize(f, &pty.Winsize{
+		Rows: uint16(ptyReq.Window.Height),
+		Cols: uint16(ptyReq.Window.Width),
+	})
+
+	go io.Copy(f, s)
+	io.Copy(s, f)
+
+	return cmd.Wait()
+}
+
 // ---------------------------------------------------------------------------
 // SSH session handler
 // ---------------------------------------------------------------------------
@@ -151,7 +169,18 @@ func sshSessionHandler(s ssh.Session) {
 	if isPty {
 		if shouldPrintGooseConfigureHint(env) {
 			fmt.Fprintln(s, "[nanosandbox] No LLM provider configured for goose.")
-			fmt.Fprintln(s, "Run 'goose configure' to set up your provider and model.")
+			fmt.Fprintln(s, "Starting 'goose configure' now...")
+
+			configureCmd := exec.Command("goose", "configure")
+			configureCmd.Env = env
+			configureCmd.Dir = su.home
+			configureCmd.SysProcAttr = su.procAttr
+
+			if err := runInteractiveCommandWithPTY(s, ptyReq, configureCmd); err != nil {
+				log.Printf("[ssh] goose configure failed: %v", err)
+				fmt.Fprintln(s, "[nanosandbox] Automatic goose configuration failed.")
+				fmt.Fprintln(s, "Run 'goose configure' to set up your provider and model.")
+			}
 		}
 
 		// Interactive session with PTY
